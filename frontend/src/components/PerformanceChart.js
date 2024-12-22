@@ -1,33 +1,38 @@
 import React from 'react';
-import { Chart as ChartJS, BarElement, CategoryScale, LinearScale, PointElement, LineElement, Tooltip } from 'chart.js';
+import { Chart as ChartJS, BarElement, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Title, Filler } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip);
+ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Title, Filler);
 
 function PerformanceChart({ data }) {
   const chartData = {
     labels: data.map((item) => item.date),
     datasets: [
       {
-        label: 'Conversions',
-        type: 'bar',
-        data: data.map((item) => item.conversions),
-        backgroundColor: 'rgba(0, 113, 188, 0.8)', // Blau
-        borderColor: 'rgba(0, 75, 141, 1)', // Dunkleres Blau
-        borderWidth: 1,
-        barPercentage: 0.6,
-        categoryPercentage: 0.8,
-      },
-      {
         label: 'Costs',
         type: 'line',
         data: data.map((item) => item.costs),
-        borderColor: '#004b8d', // Dunkelblau für die Linie
-        borderWidth: 2,
-        pointBackgroundColor: '#004b8d',
-        pointBorderColor: '#004b8d',
-        tension: 0.4, // Glättung der Linie
+        borderColor: 'rgba(0,0,0,0)', // Unsichtbare Linie
+        borderWidth: 0, // Keine Linie
+        pointBackgroundColor: '#0385B7', // Innere Punkt-Füllfarbe (Blau)
+        pointBorderColor: '#FFFFFF', // Äußere Punkt-Umrandung (Weiß)
+        pointBorderWidth: 3, // Dicke der äußeren Umrandung
+        pointRadius: 8, // Punktgröße
+        pointHoverRadius: 10, // Größere Punkte beim Hover
+        fill: true,
+        backgroundColor: 'rgba(147, 196, 214, 0.4)', // Halbtransparente Füllung
+        tension: 0.4, // Glättung der Linie (hat keinen Effekt mehr, da die Linie unsichtbar ist)
         yAxisID: 'y2',
+      },
+      {
+        label: 'Conversions',
+        type: 'bar',
+        data: data.map((item) => item.conversions),
+        backgroundColor: '#00427F', // Füllfarbe der Balken
+        borderRadius: 6, // Abgerundete Ecken für Balken
+        borderSkipped: false,
+        barPercentage: 0.6,
+        categoryPercentage: 0.8,
       },
     ],
   };
@@ -39,11 +44,36 @@ function PerformanceChart({ data }) {
       legend: {
         display: true,
         position: 'top',
+        labels: {
+          font: {
+            size: 14,
+          },
+        },
       },
       tooltip: {
-        backgroundColor: '#004b8d',
+        backgroundColor: '#01497c',
         titleColor: '#ffffff',
         bodyColor: '#ffffff',
+      },
+      title: {
+        display: true,
+        text: 'Overall Performance',
+        font: {
+          size: 24,
+          family: 'Fraunces, serif',
+          weight: '600',
+        },
+        color: '#013a63',
+        padding: {
+          top: 10, // Weniger Abstand zum oberen Rand
+          bottom: 30, // Reduzierter Abstand zur Grafik
+        },
+        align: 'start', // Titel linkbündig ausrichten
+      },
+    },
+    layout: {
+      padding: {
+        left: 50, // Verschiebt die Grafik nach rechts, damit der Titel bündig mit der ersten Zahl ist
       },
     },
     scales: {
@@ -66,6 +96,11 @@ function PerformanceChart({ data }) {
         title: {
           display: true,
           text: 'Conversions',
+          color: '#615E83',
+          font: {
+            size: 14,
+            family: 'Inter',
+          },
         },
       },
       y2: {
@@ -76,7 +111,12 @@ function PerformanceChart({ data }) {
         },
         title: {
           display: true,
-          text: 'Costs',
+          text: 'Cost per Conversion',
+          color: '#615E83',
+          font: {
+            size: 14,
+            family: 'Inter',
+          },
         },
       },
     },

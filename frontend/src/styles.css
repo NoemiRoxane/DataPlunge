@@ -1,5 +1,9 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap');
+
 :root {
   --blue-dark: #0d2a44; /* Dunkelblau für den Header */
+  --blue-chart: #00427F;
   --midle-blue: #0288D1;
   --blue-primary: #e8f1f8; /* Hellblau für die Sidebar */
   --blue-light: #61a5c2; /* Helleres Blau für Text und Akzente */
@@ -10,7 +14,7 @@
   --card-padding: 20px;
   --card-border-radius: 8px;
   --card-box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --font-heading: 'Inter', sans-serif;
+  --font-heading: 'Fraunces', serif;
   --font-body: 'Roboto', Arial, sans-serif;
 }
 

@@ -16,9 +16,9 @@ function Insights({ insightsList }) {
   };
 
   return (
-    <div className="insights-container">
-      <h3 className="insights-header">
-        Insights
+    <div className="insights-single-container">
+      <div className="insights-header">
+        <h3>Insights</h3>
         <img
           src={require('../pages/AI_stars.png')}
           alt="Icon"
@@ -26,7 +26,7 @@ function Insights({ insightsList }) {
           width="48"
           height="48"
         />
-      </h3>
+      </div>
       <p className="highlight">Great Job:</p>
       <p className="insight-text">{insightsList[currentIndex]}</p>
       <div className="insights-navigation">
