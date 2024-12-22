@@ -1,0 +1,120 @@
+:root {
+  --blue-dark: #0d2a44; /* Dunkelblau für den Header */
+  --midle-blue: #0288D1;
+  --blue-primary: #e8f1f8; /* Hellblau für die Sidebar */
+  --blue-light: #61a5c2; /* Helleres Blau für Text und Akzente */
+  --background-light: #f6fafd; /* Hintergrundfarbe */
+  --white: #ffffff;
+  --black: #000000;
+
+  --card-padding: 20px;
+  --card-border-radius: 8px;
+  --card-box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --font-heading: 'Inter', sans-serif;
+  --font-body: 'Roboto', Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background-color: var(--background-light);
+  color: var(--blue-dark);
+  min-height: 100vh;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.top-header {
+  background-color: var(--blue-dark);
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  font-size: 20px;
+  font-weight: bold;
+  font-family: var(--font-heading);
+}
+
+.header-title {
+  font-size: 28px; /* Schriftgröße der gesamten Überschrift */
+  font-family: var(--font-heading); /* Schriftart */
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+}
+
+.header-title-data {
+  color: #ffffff; /* Weiß für 'Data' */
+}
+
+.header-title-plunge {
+  color: var(--midle-blue)
+}
+
+
+.content-wrapper {
+  display: flex;
+  flex: 1;
+}
+
+.sidebar {
+  background-color: var(--blue-primary); /* Hellblau angewendet */
+  color: var(--blue-dark);
+  width: 280px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar .logo {
+  font-size: 28px;
+  margin-bottom: 30px;
+  font-family: var(--font-heading);
+}
+
+.logo-black {
+  color: var(--blue-dark);
+}
+
+.logo-blue {
+  color: var(--blue-light);
+}
+
+.sidebar .sidebar-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar .sidebar-menu li {
+  margin: 15px 0;
+}
+
+.sidebar-menu li .active-link {
+  background-color: #bfd7ff; /* Markierung für die aktive Seite */
+  color: var(--blue-dark);
+  border-radius: 8px;
+  padding: 10px;
+  text-decoration: none;
+}
+
+.sidebar .sidebar-menu li a {
+  color: var(--blue-dark); /* Text in der Sidebar */
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.sidebar .sidebar-menu li a:hover {
+  text-decoration: underline;
+}
+
+.main-content {
+  flex: 1;
+  padding: 40px;
+  overflow-y: auto;
+}
