@@ -3,10 +3,11 @@
 
 :root {
   --blue-dark: #0d2a44; /* Dunkelblau für den Header */
-  --blue-chart: #00427F;
   --midle-blue: #0288D1;
   --blue-primary: #e8f1f8; /* Hellblau für die Sidebar */
   --blue-light: #61a5c2; /* Helleres Blau für Text und Akzente */
+  --blue-background: #93C4D6;
+  --blue-menu: #93C4D6;
   --background-light: #f6fafd; /* Hintergrundfarbe */
   --white: #ffffff;
   --black: #000000;
@@ -66,7 +67,8 @@ body {
 }
 
 .sidebar {
-  background-color: var(--blue-primary); /* Hellblau angewendet */
+  background-color: var(--blue-background); /* Hellblau angewendet */
+  background-color: rgba(147, 196, 214, 0.25);
   color: var(--blue-dark);
   width: 280px;
   padding: 20px;
@@ -98,20 +100,32 @@ body {
   margin: 15px 0;
 }
 
-.sidebar-menu li .active-link {
-  background-color: #bfd7ff; /* Markierung für die aktive Seite */
-  color: var(--blue-dark);
-  border-radius: 8px;
-  padding: 10px;
-  text-decoration: none;
+.sidebar-menu li.bold a {
+  font-weight: bold; /* Fettschrift für "Performance (Overall)" und "Data" */
 }
 
-.sidebar .sidebar-menu li a {
-  color: var(--blue-dark); /* Text in der Sidebar */
+.sidebar-menu li .active-link {
+  background-color: var(--blue-menu); /* Blaue Hervorhebung */
+  color: var(--black); /* Schwarze Schrift */
+  border-radius: 0 20px 20px 0; /* Rechte Seite abgerundet */
+  padding: 10px 20px 10px 20px; /* Gleichmäßiges Padding, ohne die Breite zu beeinflussen */
+  text-decoration: none;
+  display: block; /* Link füllt die gesamte Breite */
+  margin-left: -20px; /* Markierung bis an den linken Rand ziehen */
+  width: calc(100% - 20px); /* Markierung kürzer machen */
+}
+
+
+
+.sidebar-menu li a {
+  color: var(--black); /* Schwarze Schrift für alle Links */
   text-decoration: none;
   font-size: 18px;
   font-weight: 500;
+  padding-left: 20px;
 }
+
+
 
 .sidebar .sidebar-menu li a:hover {
   text-decoration: underline;

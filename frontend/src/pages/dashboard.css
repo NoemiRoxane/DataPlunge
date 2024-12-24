@@ -1,21 +1,9 @@
-:root {
-  --blue-dark: #013a63;
-  --blue-primary: #0288d1;
-  --blue-light: #61a5c2;
-  --background-light: #f6fafd;
-  --black: #000000;
-  --white: #ffffff;
-  --card-padding: 20px;
-  --card-border-radius: 8px;
-  --card-box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --font-heading: 'Fraunces', serif;
-  --font-body: 'Roboto', Arial, sans-serif;
-}
 
 body {
   margin: 0;
   font-family: var(--font-body);
-  background-color: var(--background-light);
+  background-color: var(--blue-background); /* Hellblau angewendet */
+  background-color: rgba(147, 196, 214, 0.10);
   color: var(--black);
   min-height: 100vh;
 }
@@ -114,13 +102,13 @@ body {
 
 .chart-insights {
   display: flex;
-  gap: 50px;
-  align-items: flex-start;
-  margin-top: 20px;
+  flex-direction: column;
+  gap: 20px;
+  align-items: flex-start; /* Links ausrichten */
 }
 
 .chart-container {
-  flex: 3;
+  width: 100%; /* Diagramm nimmt die volle Breite ein */
   background: var(--white);
   padding: 20px;
   border-radius: var(--card-border-radius);
@@ -128,6 +116,7 @@ body {
 }
 
 .insights-single-container {
+  align-self: flex-start; /* Links ausrichten */
   background: var(--white);
   border-radius: var(--card-border-radius);
   padding: 20px 30px;
@@ -135,8 +124,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 15px;
-  max-width: 500px;
-  margin: 0 auto;
+  width: 100%; /* Breite der Insights */
+  margin-left: 0; /* Entfernt mittige Ausrichtung */
+  margin-top: 20px; /* Abstand zum Diagramm */
 }
 
 .insights-header {

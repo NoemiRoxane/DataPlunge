@@ -16,20 +16,45 @@ function App() {
         <div className="content-wrapper">
           <aside className="sidebar">
             <ul className="sidebar-menu">
-              <li>
-                <NavLink to="/" className={({ isActive }) => isActive ? 'active-link' : ''}>Performance (Overall)</NavLink>
+              <li className="bold">
+                <NavLink
+                  to="/"
+                  className={({ isActive }) => isActive ? 'active-link' : ''}
+                >
+                  Performance (Overall)
+                </NavLink>
               </li>
               <li>
-                <NavLink to="/channels" className={({ isActive }) => isActive ? 'active-link' : ''}>by Channels</NavLink>
+                <NavLink
+                  to="/channels"
+                  className={({ isActive }) => isActive ? 'active-link' : ''}
+                >
+                  by Channels
+                </NavLink>
               </li>
               <li>
-                <NavLink to="/campaigns" className={({ isActive }) => isActive ? 'active-link' : ''}>by Campaigns</NavLink>
+                <NavLink
+                  to="/campaigns"
+                  className={({ isActive }) => isActive ? 'active-link' : ''}
+                >
+                  by Campaigns
+                </NavLink>
+              </li>
+              <li className="bold">
+                <NavLink
+                  to="/add-data-source"
+                  className={({ isActive }) => isActive ? 'active-link' : ''}
+                >
+                  Data
+                </NavLink>
               </li>
               <li>
-                <NavLink to="/add-data-source" className={({ isActive }) => isActive ? 'active-link' : ''}>Add Data Source</NavLink>
-              </li>
-              <li>
-                <NavLink to="/add-data-manually" className={({ isActive }) => isActive ? 'active-link' : ''}>Add Data manually</NavLink>
+                <NavLink
+                  to="/add-data-manually"
+                  className={({ isActive }) => isActive ? 'active-link' : ''}
+                >
+                  Add Data manually
+                </NavLink>
               </li>
             </ul>
           </aside>
