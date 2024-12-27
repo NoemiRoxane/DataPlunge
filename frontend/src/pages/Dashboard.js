@@ -5,36 +5,17 @@ import './dashboard.css';
 
 function Dashboard() {
   const [data, setData] = useState([]);
-  const [insightsList, setInsightsList] = useState([]);
 
   useEffect(() => {
     fetch('http://127.0.0.1:5000/performance')
       .then((response) => response.json())
-      .then((data) => {
-        setData(data);
-        const insights = calculateInsights(data);
-        setInsightsList(insights);
-      })
-      .catch((error) => console.error('Error fetching data:', error));
+      .then((data) => setData(data))
+      .catch((error) => console.error('Error fetching performance data:', error));
   }, []);
-
-  const calculateInsights = (data) => {
-    if (data.length === 0) return ['Not enough data to calculate insights.'];
-    const insights = [];
-
-    const growth =
-      ((data[data.length - 1].conversions - data[0].conversions) / data[0].conversions) *
-      100;
-    insights.push(
-      `Over the last ${data.length} days, conversions grew by ${growth.toFixed(2)}%.`
-    );
-
-    return insights;
-  };
 
   return (
     <div className="dashboard-container">
-      <header className="dashboard-header">
+      <header className="page-header">
         <h1>Performance Overall</h1>
         <div className="header-controls">
           <input type="date" className="date-picker" />
@@ -74,13 +55,12 @@ function Dashboard() {
         </div>
       </section>
       <section className="chart-insights">
-        <div className="chart-container">
-          <PerformanceChart data={data} />
-        </div>
-        <div className="insights-container">
-          <Insights insightsList={insightsList} />
-        </div>
-      </section>
+  <div className="chart-container">
+    <PerformanceChart data={data} />
+  </div>
+  <Insights apiUrl="http://127.0.0.1:5000/insights" />
+</section>
+
     </div>
   );
 }

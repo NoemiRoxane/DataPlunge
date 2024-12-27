@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
+import ByChannels from './pages/ByChannels'; // 
+import AddDataSource from './pages/AddDataSource'; 
 import './styles.css';
 
 function App() {
@@ -42,10 +44,18 @@ function App() {
               </li>
               <li className="bold">
                 <NavLink
-                  to="/add-data-source"
+                  to="/data-overall"
                   className={({ isActive }) => isActive ? 'active-link' : ''}
                 >
                   Data
+                </NavLink>
+              </li>
+              <li>
+                <NavLink
+                  to="/add-data-source"
+                  className={({ isActive }) => isActive ? 'active-link' : ''}
+                >
+                  Add Data Source
                 </NavLink>
               </li>
               <li>
@@ -59,9 +69,12 @@ function App() {
             </ul>
           </aside>
           <main className="main-content">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-            </Routes>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/channels" element={<ByChannels />} />
+            <Route path="/add-data-source" element={<AddDataSource />} /> {/* Neue Route */}
+            <Route path="/add-data-manually" element={<div>Add Data Manually Page</div>} />
+</Routes>
           </main>
         </div>
       </div>

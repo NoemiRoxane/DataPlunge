@@ -1,0 +1,58 @@
+.insights-container {
+    background: var(--white);
+    border-radius: var(--card-border-radius);
+    padding: 20px 30px;
+    box-shadow: var(--card-box-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    max-width: 400px;
+    margin: 0; /* Entfernt zentrierte Ausrichtung */
+    text-align: left; /* Text links ausrichten */
+    align-self: flex-start; /* Links ausrichten */
+  }
+  
+  .insights-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .highlight {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--blue-dark);
+    margin-bottom: 10px;
+  }
+  
+  .insight-text {
+    font-size: 16px;
+    color: var(--blue-dark);
+    line-height: 1.5;
+  }
+  
+  .insights-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 15px;
+  }
+  
+  .insights-navigation button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--blue-dark);
+  }
+  
+  .insights-navigation button:disabled {
+    color: #ccc;
+    cursor: not-allowed;
+  }
+  
+  .insights-navigation span {
+    font-size: 14px;
+    color: #555;
+  }
+  

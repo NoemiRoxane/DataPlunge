@@ -1,0 +1,33 @@
+.data-source-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+  }
+  
+  .data-source-card {
+    background: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .data-source-icon {
+    font-size: 36px;
+    margin-bottom: 10px;
+  }
+  
+  .connect-button {
+    background: #0288D1;
+    color: #ffffff;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  
+  .connect-button:hover {
+    background: #005f91;
+  }
+  
