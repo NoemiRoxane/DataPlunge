@@ -14,7 +14,7 @@ function Dashboard() {
   }, []);
 
   return (
-    <div className="dashboard-container">
+    <div className="page-container">
       <header className="page-header">
         <h1>Performance Overall</h1>
         <div className="header-controls">

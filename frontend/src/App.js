@@ -74,7 +74,7 @@ function App() {
             <Route path="/channels" element={<ByChannels />} />
             <Route path="/add-data-source" element={<AddDataSource />} /> {/* Neue Route */}
             <Route path="/add-data-manually" element={<div>Add Data Manually Page</div>} />
-</Routes>
+          </Routes>
           </main>
         </div>
       </div>

@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Insights from '../components/Insights';
 import './ByChannels.css';
 
 function ByChannels() {
   const navigate = useNavigate();
+  const [insightsApiUrl] = useState('http://127.0.0.1:5000/insights'); // API-URL für Insights
 
   const tableData = [
     { source: "Google Ads", costs: "CHF4,046.25", impressions: "1,235,354", clicks: 3903, costPerClick: "CHF1.03", sessions: 3976, conversions: 199, costPerConversion: "CHF20.3" },
@@ -14,18 +15,15 @@ function ByChannels() {
     { source: "Manually added (via GA4)", costs: "CHF412", impressions: "-", clicks: 412, costPerClick: "CHF1.50", sessions: 412, conversions: 18, costPerConversion: "CHF22.8" },
   ];
 
-  const insightsList = [
-    "Over the last 6 days there was a conversion growth trend from 15%.",
-  ];
-
   return (
     <div className="page-container">
       <header className="page-header">
         <h1>Performance by Channel</h1>
+        <div className="header-controls">
+          <input type="date" className="date-picker" />
+          <button className="export-button">Export</button>
+        </div>
       </header>
-      <div className="export-controls">
-        <button className="export-button">Export</button>
-      </div>
       <div className="table-container">
         <table className="data-table">
           <thead>
@@ -74,7 +72,7 @@ function ByChannels() {
           <button className="cta-button">Add Channel or Costs manually</button>
         </div>
         <div className="insights-section">
-          <Insights insightsList={insightsList} />
+          <Insights apiUrl={insightsApiUrl} />
         </div>
       </div>
     </div>
