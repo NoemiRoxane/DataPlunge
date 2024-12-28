@@ -6,30 +6,29 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineEleme
 
 function PerformanceChart({ data }) {
   const chartData = {
-    labels: data.map((item) => item.date),
+    labels: data.map((item) => item.month), // Labels basieren auf dem Monat
     datasets: [
       {
         label: 'Costs',
         type: 'line',
         data: data.map((item) => item.costs),
-        borderColor: 'rgba(0,0,0,0)', // Unsichtbare Linie
-        borderWidth: 0, // Keine Linie
-        pointBackgroundColor: '#0385B7', // Innere Punkt-Füllfarbe (Blau)
-        pointBorderColor: '#FFFFFF', // Äußere Punkt-Umrandung (Weiß)
-        pointBorderWidth: 3, // Dicke der äußeren Umrandung
-        pointRadius: 8, // Punktgröße
-        pointHoverRadius: 10, // Größere Punkte beim Hover
+        borderColor: '#0385B7',
+        borderWidth: 2,
+        pointBackgroundColor: '#0385B7',
+        pointBorderColor: '#FFFFFF',
+        pointBorderWidth: 3,
+        pointRadius: 6,
+        pointHoverRadius: 8,
         fill: true,
-        backgroundColor: 'rgba(147, 196, 214, 0.4)', // Halbtransparente Füllung
-        tension: 0.4, // Glättung der Linie (hat keinen Effekt mehr, da die Linie unsichtbar ist)
+        backgroundColor: 'rgba(147, 196, 214, 0.4)',
         yAxisID: 'y2',
       },
       {
         label: 'Conversions',
         type: 'bar',
         data: data.map((item) => item.conversions),
-        backgroundColor: '#00427F', // Füllfarbe der Balken
-        borderRadius: 6, // Abgerundete Ecken für Balken
+        backgroundColor: '#00427F',
+        borderRadius: 6,
         borderSkipped: false,
         barPercentage: 0.6,
         categoryPercentage: 0.8,
@@ -57,7 +56,7 @@ function PerformanceChart({ data }) {
       },
       title: {
         display: true,
-        text: 'Overall Performance',
+        text: 'Overall Performance (Monthly)',
         font: {
           size: 24,
           family: 'Fraunces, serif',
@@ -65,15 +64,15 @@ function PerformanceChart({ data }) {
         },
         color: '#013a63',
         padding: {
-          top: 10, // Weniger Abstand zum oberen Rand
-          bottom: 30, // Reduzierter Abstand zur Grafik
+          top: 10,
+          bottom: 30,
         },
-        align: 'start', // Titel linkbündig ausrichten
+        align: 'start',
       },
     },
     layout: {
       padding: {
-        left: 50, // Verschiebt die Grafik nach rechts, damit der Titel bündig mit der ersten Zahl ist
+        left: 50,
       },
     },
     scales: {
@@ -107,7 +106,7 @@ function PerformanceChart({ data }) {
         type: 'linear',
         position: 'right',
         grid: {
-          drawOnChartArea: false, // Gitterlinien für die zweite Achse deaktivieren
+          drawOnChartArea: false,
         },
         title: {
           display: true,

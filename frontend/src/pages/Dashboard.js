@@ -4,13 +4,14 @@ import Insights from '../components/Insights';
 import './dashboard.css';
 
 function Dashboard() {
-  const [data, setData] = useState([]);
+  const [monthlyData, setMonthlyData] = useState([]);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:5000/performance')
+    // Fetch data from the monthly_performance endpoint
+    fetch('http://127.0.0.1:5000/monthly-performance')
       .then((response) => response.json())
-      .then((data) => setData(data))
-      .catch((error) => console.error('Error fetching performance data:', error));
+      .then((data) => setMonthlyData(data))
+      .catch((error) => console.error('Error fetching monthly performance data:', error));
   }, []);
 
   return (
@@ -26,8 +27,8 @@ function Dashboard() {
         <div className="card">
           <h3>Costs</h3>
           <p className="value">
-            ${data.length > 0
-              ? data.reduce((sum, item) => sum + item.costs, 0).toFixed(2)
+            ${monthlyData.length > 0
+              ? monthlyData.reduce((sum, item) => sum + item.costs, 0).toFixed(2)
               : 'Loading...'}
           </p>
           <span className="trend positive">+20% month over month</span>
@@ -35,8 +36,8 @@ function Dashboard() {
         <div className="card">
           <h3>Conversions</h3>
           <p className="value">
-            {data.length > 0
-              ? data.reduce((sum, item) => sum + item.conversions, 0)
+            {monthlyData.length > 0
+              ? monthlyData.reduce((sum, item) => sum + item.conversions, 0)
               : 'Loading...'}
           </p>
           <span className="trend positive">+33% month over month</span>
@@ -44,10 +45,10 @@ function Dashboard() {
         <div className="card">
           <h3>Cost per Conversion</h3>
           <p className="value">
-            {data.length > 0
+            {monthlyData.length > 0
               ? (
-                  data.reduce((sum, item) => sum + item.costs, 0) /
-                  data.reduce((sum, item) => sum + item.conversions, 0)
+                  monthlyData.reduce((sum, item) => sum + item.costs, 0) /
+                  monthlyData.reduce((sum, item) => sum + item.conversions, 0)
                 ).toFixed(2)
               : 'Loading...'}
           </p>
@@ -55,12 +56,11 @@ function Dashboard() {
         </div>
       </section>
       <section className="chart-insights">
-  <div className="chart-container">
-    <PerformanceChart data={data} />
-  </div>
-  <Insights apiUrl="http://127.0.0.1:5000/insights" />
-</section>
-
+        <div className="chart-container">
+          <PerformanceChart data={monthlyData} />
+        </div>
+        <Insights apiUrl="http://127.0.0.1:5000/insights" />
+      </section>
     </div>
   );
 }
