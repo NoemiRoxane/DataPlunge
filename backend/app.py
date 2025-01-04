@@ -1,6 +1,8 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import sqlite3
+from datetime import datetime
+
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -83,93 +85,49 @@ def calculate_monthly_performance():
 
     conn.commit()
     conn.close()
-
-# Route to get aggregated performance data by source
-@app.route('/aggregated-performance', methods=['GET'])
-def get_aggregated_performance():
-    conn = sqlite3.connect('performance.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT 
-            source, 
-            SUM(costs) AS total_costs, 
-            SUM(impressions) AS total_impressions, 
-            SUM(clicks) AS total_clicks, 
-            SUM(sessions) AS total_sessions, 
-            SUM(conversions) AS total_conversions,
-            CASE WHEN SUM(clicks) > 0 THEN SUM(costs) / SUM(clicks) ELSE 0 END AS cost_per_click,
-            CASE WHEN SUM(conversions) > 0 THEN SUM(costs) / SUM(conversions) ELSE 0 END AS cost_per_conversion
-        FROM performance
-        GROUP BY source
-    ''')
-    rows = cursor.fetchall()
-    conn.close()
-
-    aggregated_data = [
-        {
-            'source': row[0],
-            'costs': row[1],
-            'impressions': row[2],
-            'clicks': row[3],
-            'sessions': row[4],
-            'conversions': row[5],
-            'cost_per_click': row[6],
-            'cost_per_conversion': row[7],
-        }
-        for row in rows
-    ]
-    return jsonify(aggregated_data)    
+    
 
 # Route to get filtered performance data
 @app.route('/filter-performance', methods=['GET'])
 def filter_performance():
-    time_range = request.args.get('range')  # Optionen: day, month, year, range
-    value = request.args.get('value')      # z.B. '2024-12-10' oder '2024-12-01|2024-12-10'
+    time_range = request.args.get('range')
+    value = request.args.get('value')
+    print(f"Received value from frontend: {value}")  # Debugging
     conn = sqlite3.connect('performance.db')
     cursor = conn.cursor()
 
+    # Überprüfe alle verfügbaren Daten
+    cursor.execute("SELECT DISTINCT date FROM performance;")
+    print("All available dates in DB:", cursor.fetchall())
+
     if time_range == 'day':
+        print(f"Filtering by day: {value}")
         query = """
             SELECT date, costs, conversions, cost_per_conversion, impressions, clicks, sessions, cost_per_click, source
             FROM performance
-            WHERE date = ?
+            WHERE DATE(date) = DATE(?)
         """
         cursor.execute(query, (value,))
     elif time_range == 'range':
         start_date, end_date = value.split('|')
+        print(f"Filtering by range from {start_date} to {end_date}")
         query = """
             SELECT date, costs, conversions, cost_per_conversion, impressions, clicks, sessions, cost_per_click, source
             FROM performance
-            WHERE date BETWEEN ? AND ?
+            WHERE DATE(date) BETWEEN DATE(?) AND DATE(?)
         """
         cursor.execute(query, (start_date, end_date))
-    elif time_range == 'month':
-        query = """
-            SELECT strftime('%Y-%m', date) AS month, SUM(costs) AS total_costs, SUM(conversions) AS total_conversions,
-                   CASE WHEN SUM(conversions) > 0 THEN SUM(costs) / SUM(conversions) ELSE 0 END AS cost_per_conversion
-            FROM performance
-            WHERE strftime('%Y-%m', date) = ?
-            GROUP BY month
-        """
-        cursor.execute(query, (value,))
-    elif time_range == 'year':
-        query = """
-            SELECT strftime('%Y', date) AS year, SUM(costs) AS total_costs, SUM(conversions) AS total_conversions,
-                   CASE WHEN SUM(conversions) > 0 THEN SUM(costs) / SUM(conversions) ELSE 0 END AS cost_per_conversion
-            FROM performance
-            WHERE strftime('%Y', date) = ?
-            GROUP BY year
-        """
-        cursor.execute(query, (value,))
     else:
+        print("Invalid time range.")
         conn.close()
         return jsonify({'error': 'Invalid time range'}), 400
 
     rows = cursor.fetchall()
+    print(f"Rows fetched for {value}: {rows}")
     conn.close()
 
-    # Überprüfe, ob Daten vorhanden sind
     if not rows:
+        print("No data found for the given range.")
         return jsonify([])
 
     filtered_data = [
@@ -186,22 +144,20 @@ def filter_performance():
         }
         for row in rows
     ]
+    print(f"Filtered data returned: {filtered_data}")
     return jsonify(filtered_data)
 
 
-# Route to get insights
-@app.route('/insights', methods=['GET'])
-def get_insights():
+# Route to get all performance data
+@app.route('/performance', methods=['GET'])
+def get_performance():
     conn = sqlite3.connect('performance.db')
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM performance')
     rows = cursor.fetchall()
     conn.close()
 
-    if not rows:
-        return jsonify({'error': 'No data available'}), 404
-
-    data = [
+    performance_data = [
         {
             'date': row[0],
             'costs': row[1],
@@ -210,29 +166,12 @@ def get_insights():
             'impressions': row[4],
             'clicks': row[5],
             'sessions': row[6],
-            'cost_per_click': row[7]
+            'cost_per_click': row[7],
+            'source': row[8]
         }
         for row in rows
     ]
-
-    insights = []
-
-    # Highest costs
-    highest_cost = max(data, key=lambda x: x['costs'])
-    insights.append(f"Highest costs were on {highest_cost['date']} with CHF {highest_cost['costs']:.2f}.")
-
-    # Daily growth insights
-    for i in range(1, len(data)):
-        prev = data[i - 1]
-        curr = data[i]
-        growth_rate = ((curr['costs'] - prev['costs']) / prev['costs']) * 100
-        insights.append(f"On {curr['date']}, daily cost growth was {growth_rate:.2f}% compared to the previous day.")
-
-    # Average cost per conversion
-    avg_cost_per_conversion = sum(row['cost_per_conversion'] for row in data) / len(data)
-    insights.append(f"Average cost per conversion is CHF {avg_cost_per_conversion:.2f} across all days.")
-
-    return jsonify(insights)
+    return jsonify(performance_data)
 
 if __name__ == '__main__':
     init_db()

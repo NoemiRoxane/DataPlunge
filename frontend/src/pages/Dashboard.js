@@ -7,71 +7,89 @@ import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './dashboard.css';
 
-// Funktion zur lokalen Formatierung des Datums (YYYY-MM-DD)
-const formatDateToLocal = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0'); // Monate beginnen bei 0
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`; // Format: YYYY-MM-DD
-};
-
 function Dashboard() {
   const [filteredData, setFilteredData] = useState([]); // Gefilterte Daten
   const [aggregatedData, setAggregatedData] = useState([]); // Aggregierte Daten
   const [startDate, setStartDate] = useState(null); // Startdatum
   const [endDate, setEndDate] = useState(null); // Enddatum
 
-  // Funktion zur Überwachung von filteredData
+  // Setze den aktuellen Monat als Default
   useEffect(() => {
-    console.log('Filtered Data:', filteredData); // Debug-Ausgabe für gefilterte Daten
-  }, [filteredData]);
+    const today = new Date();
+    const firstDay = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)); // Erster Tag des Monats (UTC)
+    const lastDay = new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 0)); // Letzter Tag des Monats (UTC)
+    setStartDate(firstDay);
+    setEndDate(lastDay);
+    fetchFilteredData(firstDay, lastDay); // Lade Daten für den aktuellen Monat
+  }, []);
 
-  // Funktion, um gefilterte Daten zu holen
-  const fetchFilteredData = () => {
-    if (!startDate) {
-      toast.error('Please select at least a start date.');
-      return;
+  const fetchFilteredData = (start = startDate, end = endDate) => {
+    if (!start) {
+        console.log('Start date is missing.');
+        toast.error('Please select at least a start date.');
+        return;
     }
 
-    const range = startDate && endDate ? 'range' : 'day';
-    const value = startDate && endDate
-      ? `${formatDateToLocal(startDate)}|${formatDateToLocal(endDate)}`
-      : formatDateToLocal(startDate);
+    // Lokale Zeit auf UTC normalisieren, mit Fallback für das Enddatum
+    const normalizedStart = new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()));
+    const normalizedEnd = end
+        ? new Date(Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()))
+        : null;
 
-    console.log('Requesting data for range:', range, 'value:', value);
+    let range = 'day';
+    let value = normalizedStart.toISOString().split('T')[0];
+
+    // Wenn ein Enddatum angegeben ist oder das Startdatum als Enddatum verwendet wird
+    if (end || !end) {
+        range = 'range';
+        value = `${normalizedStart.toISOString().split('T')[0]}|${(normalizedEnd || normalizedStart).toISOString().split('T')[0]}`;
+    }
+
+    // Debugging Logs
+    console.log('---- Debug Logs ----');
+    console.log('Selected Start Date:', start);
+    console.log('Normalized Start Date:', normalizedStart);
+    console.log('Selected End Date:', end || 'No end date provided, using start date as end date');
+    console.log('Normalized End Date:', normalizedEnd || normalizedStart);
+    console.log('Computed Range:', range);
+    console.log('Computed Value for API:', value);
 
     fetch(`http://127.0.0.1:5000/filter-performance?range=${range}&value=${value}`)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('No data found for the selected range.');
-        }
-        return response.json();
-      })
-      .then((data) => {
-        console.log('Received data:', data);
-        if (data.length === 0) {
-          throw new Error('No data found for the selected range.');
-        }
-        setFilteredData(data);
-        aggregateData(data);
-        toast.dismiss();
-      })
-      .catch((error) => {
-        setFilteredData([]);
-        setAggregatedData([]);
-        console.error(error.message);
-        toast.error(error.message, {
-          position: 'top-right',
-          autoClose: 5000,
-          hideProgressBar: true,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          progress: undefined,
-          theme: 'colored',
+        .then((response) => {
+            console.log('Response status:', response.status);
+            if (!response.ok) {
+                throw new Error('No data found for the selected range.');
+            }
+            return response.json();
+        })
+        .then((data) => {
+            console.log('Data received from backend:', data);
+            if (data.length === 0) {
+                console.log('No data found for the selected range (empty array).');
+                throw new Error('No data found for the selected range.');
+            }
+            setFilteredData(data);
+            aggregateData(data);
+            toast.dismiss();
+        })
+        .catch((error) => {
+            console.error('Error occurred:', error.message);
+            setFilteredData([]);
+            setAggregatedData([]);
+            toast.error(error.message, {
+                position: 'top-right',
+                autoClose: 5000,
+                hideProgressBar: true,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+                progress: undefined,
+                theme: 'colored',
+            });
         });
-      });
-  };
+};
+
+
 
   // Funktion zur Aggregation der Daten
   const aggregateData = (data) => {
@@ -97,26 +115,44 @@ function Dashboard() {
       <header className="page-header">
         <h1>Performance Overall</h1>
         <div className="header-controls">
-          {/* Zeitfensterauswahl */}
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <DatePicker
+          <DatePicker
               selected={startDate}
-              onChange={(date) => setStartDate(date)}
+              onChange={(date) => {
+                  if (date) {
+                      const correctedDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+                      console.log('Selected Start Date (corrected to UTC):', correctedDate);
+                      setStartDate(correctedDate);
+                  } else {
+                      console.log('Start date cleared');
+                      setStartDate(null);
+                  }
+              }}
               selectsStart
               startDate={startDate}
               endDate={endDate}
               placeholderText="Start Date"
-            />
-            <DatePicker
+          />
+          <DatePicker
               selected={endDate}
-              onChange={(date) => setEndDate(date)}
+              onChange={(date) => {
+                  if (date) {
+                      const correctedDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+                      console.log('Selected End Date (corrected to UTC):', correctedDate);
+                      setEndDate(correctedDate);
+                  } else {
+                      console.log('End date cleared, using start date as end date');
+                      setEndDate(null);
+                  }
+              }}
               selectsEnd
               startDate={startDate}
               endDate={endDate}
               placeholderText="End Date (optional)"
               isClearable
-            />
-            <button className="ok-button" onClick={fetchFilteredData}>
+          />
+
+            <button className="ok-button" onClick={() => fetchFilteredData()}>
               OK
             </button>
           </div>
