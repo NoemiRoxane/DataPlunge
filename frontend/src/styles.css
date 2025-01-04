@@ -242,20 +242,7 @@ body {
   color: #dc3545;
 }
 
-.chart-insights {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  align-items: flex-start; /* Links ausrichten */
-}
 
-.chart-container {
-  width: 100%; /* Diagramm nimmt die volle Breite ein */
-  background: var(--white);
-  padding: 20px;
-  border-radius: var(--card-border-radius);
-  box-shadow: var(--card-box-shadow);
-}
 
 .insights-single-container {
   align-self: flex-start; /* Links ausrichten */

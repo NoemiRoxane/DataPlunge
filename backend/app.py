@@ -84,54 +84,6 @@ def calculate_monthly_performance():
     conn.commit()
     conn.close()
 
-# Route to add a data source and fetch data
-@app.route('/add-data-source', methods=['POST'])
-def add_data_source():
-    data = request.json
-    source = data.get('source')
-    if not source:
-        return jsonify({'error': 'Missing source name'}), 400
-
-    try:
-        conn = sqlite3.connect('performance.db')
-        cursor = conn.cursor()
-
-        # Check if the source already exists
-        cursor.execute('SELECT COUNT(*) FROM performance WHERE source = ?', (source,))
-        exists = cursor.fetchone()[0]
-
-        if exists:
-            conn.close()
-            return jsonify({'error': f'Source {source} already exists in the database.'}), 400
-
-        # Fetch data from the corresponding API
-        if source == "Google Ads":
-            fetched_data = fetch_google_ads_data()
-        elif source == "Microsoft Advertising":
-            fetched_data = fetch_microsoft_ads_data()
-        else:
-            fetched_data = []
-
-        # Insert fetched data into the performance table
-        for record in fetched_data:
-            cursor.execute('''
-                INSERT INTO performance (date, costs, conversions, cost_per_conversion, impressions, clicks, sessions, cost_per_click, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (record['date'], record['costs'], record['conversions'], record['cost_per_conversion'],
-                  record['impressions'], record['clicks'], record['sessions'], record['cost_per_click'], source))
-
-        conn.commit()
-        conn.close()
-
-        # Recalculate monthly data after insert
-        calculate_monthly_performance()
-
-        return jsonify({'message': f'Successfully connected {source} and fetched data.'}), 200
-    except sqlite3.IntegrityError:
-        return jsonify({'error': f'Source {source} already exists in the database.'}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
 # Route to get aggregated performance data by source
 @app.route('/aggregated-performance', methods=['GET'])
 def get_aggregated_performance():
@@ -166,18 +118,61 @@ def get_aggregated_performance():
         }
         for row in rows
     ]
-    return jsonify(aggregated_data)
+    return jsonify(aggregated_data)    
 
-# Route to get performance data
-@app.route('/performance', methods=['GET'])
-def get_performance():
+# Route to get filtered performance data
+@app.route('/filter-performance', methods=['GET'])
+def filter_performance():
+    time_range = request.args.get('range')  # Optionen: day, month, year, range
+    value = request.args.get('value')      # z.B. '2024-12-10' oder '2024-12-01|2024-12-10'
     conn = sqlite3.connect('performance.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM performance')
+
+    if time_range == 'day':
+        query = """
+            SELECT date, costs, conversions, cost_per_conversion, impressions, clicks, sessions, cost_per_click, source
+            FROM performance
+            WHERE date = ?
+        """
+        cursor.execute(query, (value,))
+    elif time_range == 'range':
+        start_date, end_date = value.split('|')
+        query = """
+            SELECT date, costs, conversions, cost_per_conversion, impressions, clicks, sessions, cost_per_click, source
+            FROM performance
+            WHERE date BETWEEN ? AND ?
+        """
+        cursor.execute(query, (start_date, end_date))
+    elif time_range == 'month':
+        query = """
+            SELECT strftime('%Y-%m', date) AS month, SUM(costs) AS total_costs, SUM(conversions) AS total_conversions,
+                   CASE WHEN SUM(conversions) > 0 THEN SUM(costs) / SUM(conversions) ELSE 0 END AS cost_per_conversion
+            FROM performance
+            WHERE strftime('%Y-%m', date) = ?
+            GROUP BY month
+        """
+        cursor.execute(query, (value,))
+    elif time_range == 'year':
+        query = """
+            SELECT strftime('%Y', date) AS year, SUM(costs) AS total_costs, SUM(conversions) AS total_conversions,
+                   CASE WHEN SUM(conversions) > 0 THEN SUM(costs) / SUM(conversions) ELSE 0 END AS cost_per_conversion
+            FROM performance
+            WHERE strftime('%Y', date) = ?
+            GROUP BY year
+        """
+        cursor.execute(query, (value,))
+    else:
+        conn.close()
+        return jsonify({'error': 'Invalid time range'}), 400
+
     rows = cursor.fetchall()
     conn.close()
 
-    performance_data = [
+    # Überprüfe, ob Daten vorhanden sind
+    if not rows:
+        return jsonify([])
+
+    filtered_data = [
         {
             'date': row[0],
             'costs': row[1],
@@ -187,35 +182,12 @@ def get_performance():
             'clicks': row[5],
             'sessions': row[6],
             'cost_per_click': row[7],
-            'source': row[8]
+            'source': row[8],
         }
         for row in rows
     ]
-    return jsonify(performance_data)
+    return jsonify(filtered_data)
 
-# Route to get monthly performance data
-@app.route('/monthly-performance', methods=['GET'])
-def get_monthly_performance():
-    conn = sqlite3.connect('performance.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM monthly_performance")
-    rows = cursor.fetchall()
-    conn.close()
-
-    monthly_data = [
-        {
-            'month': row[0],
-            'costs': row[1],
-            'conversions': row[2],
-            'impressions': row[3],
-            'clicks': row[4],
-            'sessions': row[5],
-            'cost_per_click': row[6],
-            'cost_per_conversion': row[7],
-        }
-        for row in rows
-    ]
-    return jsonify(monthly_data)
 
 # Route to get insights
 @app.route('/insights', methods=['GET'])

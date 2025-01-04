@@ -1,6 +1,7 @@
 import React from 'react';
 
 function PerformanceSummary({ data }) {
+  // Berechnung der Metriken
   const totalCosts = data.length > 0
     ? data.reduce((sum, item) => sum + item.costs, 0).toFixed(2)
     : 'Loading...';
@@ -13,6 +14,25 @@ function PerformanceSummary({ data }) {
     ? (
         data.reduce((sum, item) => sum + item.costs, 0) /
         data.reduce((sum, item) => sum + item.conversions, 0)
+      ).toFixed(2)
+    : 'Loading...';
+
+  const totalImpressions = data.length > 0
+    ? data.reduce((sum, item) => sum + (item.impressions || 0), 0)
+    : 'Loading...';
+
+  const totalClicks = data.length > 0
+    ? data.reduce((sum, item) => sum + (item.clicks || 0), 0)
+    : 'Loading...';
+
+  const totalSessions = data.length > 0
+    ? data.reduce((sum, item) => sum + (item.sessions || 0), 0)
+    : 'Loading...';
+
+  const costPerClick = data.length > 0
+    ? (
+        data.reduce((sum, item) => sum + item.costs, 0) /
+        data.reduce((sum, item) => sum + (item.clicks || 1), 0)
       ).toFixed(2)
     : 'Loading...';
 
@@ -30,8 +50,26 @@ function PerformanceSummary({ data }) {
         <h3>Cost per Conversion</h3>
         <p>${costPerConversion}</p>
       </div>
+      <div>
+        <h3>Impressions</h3>
+        <p>{totalImpressions}</p>
+      </div>
+      <div>
+        <h3>Clicks</h3>
+        <p>{totalClicks}</p>
+      </div>
+      <div>
+        <h3>Sessions</h3>
+        <p>{totalSessions}</p>
+      </div>
+      <div>
+        <h3>Cost per Click</h3>
+        <p>${costPerClick}</p>
+      </div>
     </div>
   );
 }
+console.log('PerformanceSummary data:', data);
+
 
 export default PerformanceSummary;

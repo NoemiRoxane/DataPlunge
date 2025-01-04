@@ -5,20 +5,33 @@ import { Bar } from 'react-chartjs-2';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Title, Filler);
 
 function PerformanceChart({ data }) {
+  // Aggregiere die Daten nach Datum
+  const aggregatedData = data.reduce((acc, item) => {
+    const existing = acc.find((d) => d.date === item.date);
+    if (existing) {
+      existing.costs += item.costs;
+      existing.conversions += item.conversions;
+    } else {
+      acc.push({
+        date: item.date,
+        costs: item.costs,
+        conversions: item.conversions,
+      });
+    }
+    return acc;
+  }, []);
+
+  // Dynamische Labels basierend auf der Filterauswahl
   const chartData = {
-    labels: data.map((item) => item.month), // Labels basieren auf dem Monat
+    labels: aggregatedData.map((item) => item.date),
     datasets: [
       {
         label: 'Costs',
         type: 'line',
-        data: data.map((item) => item.costs),
+        data: aggregatedData.map((item) => item.costs),
         borderColor: '#0385B7',
         borderWidth: 2,
         pointBackgroundColor: '#0385B7',
-        pointBorderColor: '#FFFFFF',
-        pointBorderWidth: 3,
-        pointRadius: 6,
-        pointHoverRadius: 8,
         fill: true,
         backgroundColor: 'rgba(147, 196, 214, 0.4)',
         yAxisID: 'y2',
@@ -26,16 +39,16 @@ function PerformanceChart({ data }) {
       {
         label: 'Conversions',
         type: 'bar',
-        data: data.map((item) => item.conversions),
+        data: aggregatedData.map((item) => item.conversions),
         backgroundColor: '#00427F',
         borderRadius: 6,
-        borderSkipped: false,
         barPercentage: 0.6,
         categoryPercentage: 0.8,
       },
     ],
   };
 
+  // Optionen bleiben gleich, aber der Titel wird dynamisch angepasst
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -56,7 +69,7 @@ function PerformanceChart({ data }) {
       },
       title: {
         display: true,
-        text: 'Overall Performance (Monthly)',
+        text: `Overall Performance (${data.length > 0 ? 'Filtered Data' : 'Monthly'})`,
         font: {
           size: 24,
           family: 'Fraunces, serif',
@@ -123,7 +136,7 @@ function PerformanceChart({ data }) {
 
   return (
     <div style={{ width: '100%', height: '450px' }}>
-      {data.length > 0 ? <Bar data={chartData} options={chartOptions} /> : <p>Loading chart...</p>}
+      {aggregatedData.length > 0 ? <Bar data={chartData} options={chartOptions} /> : <p>Loading chart...</p>}
     </div>
   );
 }
