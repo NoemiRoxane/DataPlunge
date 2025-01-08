@@ -173,6 +173,64 @@ def get_performance():
     ]
     return jsonify(performance_data)
 
+@app.route('/insights', methods=['GET'])
+def get_insights():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    conn = sqlite3.connect('performance.db')
+    cursor = conn.cursor()
+
+    # Überprüfen Sie, ob Start- und Enddatum angegeben wurden
+    if start_date and end_date:
+        query = '''
+            SELECT date, costs, conversions, cost_per_conversion, impressions, clicks, sessions, cost_per_click
+            FROM performance
+            WHERE DATE(date) BETWEEN DATE(?) AND DATE(?)
+            ORDER BY DATE(date)
+        '''
+        cursor.execute(query, (start_date, end_date))
+    else:
+        return jsonify({'error': 'Start date and end date must be provided'}), 400
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return jsonify({'error': 'No data available for the given dates'}), 404
+
+    insights = []
+    total_costs = sum(row[1] for row in rows)
+    total_conversions = sum(row[2] for row in rows)
+    average_cost_per_conversion = total_costs / total_conversions if total_conversions > 0 else 0
+
+    # Höchste Kosten
+    highest_cost = max(rows, key=lambda x: x[1])
+    insights.append({
+        'date': highest_cost[0],
+        'message': f'Highest costs were on {highest_cost[0]} with CHF {highest_cost[1]:.2f}.'
+    })
+
+    # Wachstumsberechnung
+    if len(rows) > 1:
+        prev_day = rows[0]
+        for current_day in rows[1:]:
+            growth_rate = ((current_day[1] - prev_day[1]) / prev_day[1] * 100) if prev_day[1] else 0
+            insights.append({
+                'date': current_day[0],
+                'message': f'Costs grew by {growth_rate:.2f}% on {current_day[0]} compared to {prev_day[0]}.'
+            })
+            prev_day = current_day
+
+    # Durchschnittliche Kosten pro Conversion
+    insights.append({
+        'message': f'Average cost per conversion for the period: CHF {average_cost_per_conversion:.2f}.'
+    })
+
+    return jsonify(insights)
+
+
+
 if __name__ == '__main__':
     init_db()
     calculate_monthly_performance()
