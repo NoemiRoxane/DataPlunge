@@ -6,56 +6,39 @@ import Insights from '../components/Insights';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './dashboard.css';
+import { useDate } from './DateContext';  // Importiere den useDate Hook
 
 function Dashboard() {
+  const { dateRange, setDateRange } = useDate(); // Verwende den DateContext
   const [filteredData, setFilteredData] = useState([]); // Gefilterte Daten
   const [aggregatedData, setAggregatedData] = useState([]); // Aggregierte Daten
-  const [startDate, setStartDate] = useState(null); // Startdatum
-  const [endDate, setEndDate] = useState(null); // Enddatum
-
 
   // Setze den aktuellen Monat als Default
   useEffect(() => {
     const today = new Date();
     const firstDay = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)); // Erster Tag des Monats (UTC)
     const lastDay = new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 0)); // Letzter Tag des Monats (UTC)
-    setStartDate(firstDay);
-    setEndDate(lastDay);
+    setDateRange({ startDate: firstDay, endDate: lastDay });
     fetchFilteredData(firstDay, lastDay); // Lade Daten für den aktuellen Monat
-  }, []);
+  }, [setDateRange]);
 
-  const fetchFilteredData = (start = startDate, end = endDate) => {
-    if (!start) {
-        console.log('Start date is missing.');
-        toast.error('Please select at least a start date.');
+  const fetchFilteredData = (start = dateRange.startDate, end = dateRange.endDate) => {
+    if (!start || !end) {
+        console.log('Start or end date is missing.');
+        toast.error('Please select both start and end dates.');
         return;
     }
 
-    // Lokale Zeit auf UTC normalisieren, mit Fallback für das Enddatum
-    const normalizedStart = new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()));
-    const normalizedEnd = end
-        ? new Date(Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()))
-        : null;
-
-    let range = 'day';
-    let value = normalizedStart.toISOString().split('T')[0];
-
-    // Wenn ein Enddatum angegeben ist oder das Startdatum als Enddatum verwendet wird
-    if (end || !end) {
-        range = 'range';
-        value = `${normalizedStart.toISOString().split('T')[0]}|${(normalizedEnd || normalizedStart).toISOString().split('T')[0]}`;
-    }
+    const normalizedStart = start.toISOString().split('T')[0];
+    const normalizedEnd = end.toISOString().split('T')[0];
+    const value = `${normalizedStart}|${normalizedEnd}`;
 
     // Debugging Logs
-    console.log('---- Debug Logs ----');
     console.log('Selected Start Date:', start);
-    console.log('Normalized Start Date:', normalizedStart);
-    console.log('Selected End Date:', end || 'No end date provided, using start date as end date');
-    console.log('Normalized End Date:', normalizedEnd || normalizedStart);
-    console.log('Computed Range:', range);
+    console.log('Selected End Date:', end);
     console.log('Computed Value for API:', value);
 
-    fetch(`http://127.0.0.1:5000/filter-performance?range=${range}&value=${value}`)
+    fetch(`http://127.0.0.1:5000/filter-performance?range=range&value=${value}`)
         .then((response) => {
             console.log('Response status:', response.status);
             if (!response.ok) {
@@ -66,7 +49,6 @@ function Dashboard() {
         .then((data) => {
             console.log('Data received from backend:', data);
             if (data.length === 0) {
-                console.log('No data found for the selected range (empty array).');
                 throw new Error('No data found for the selected range.');
             }
             setFilteredData(data);
@@ -88,11 +70,7 @@ function Dashboard() {
                 theme: 'colored',
             });
         });
-};
-
-
-
-
+  };
 
   // Funktion zur Aggregation der Daten
   const aggregateData = (data) => {
@@ -112,6 +90,12 @@ function Dashboard() {
     setAggregatedData(aggregated);
   };
 
+  const handleDateChange = (dates) => {
+    const [start, end] = dates;
+    setDateRange({ startDate: start, endDate: end });
+    fetchFilteredData(start, end);
+  };
+
   return (
     <div className="page-container">
       <ToastContainer />
@@ -119,42 +103,15 @@ function Dashboard() {
         <h1>Performance Overall</h1>
         <div className="header-controls">
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <DatePicker
-              selected={startDate}
-              onChange={(date) => {
-                  if (date) {
-                      const correctedDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-                      console.log('Selected Start Date (corrected to UTC):', correctedDate);
-                      setStartDate(correctedDate);
-                  } else {
-                      console.log('Start date cleared');
-                      setStartDate(null);
-                  }
-              }}
-              selectsStart
-              startDate={startDate}
-              endDate={endDate}
-              placeholderText="Start Date"
-          />
-          <DatePicker
-              selected={endDate}
-              onChange={(date) => {
-                  if (date) {
-                      const correctedDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-                      console.log('Selected End Date (corrected to UTC):', correctedDate);
-                      setEndDate(correctedDate);
-                  } else {
-                      console.log('End date cleared, using start date as end date');
-                      setEndDate(null);
-                  }
-              }}
-              selectsEnd
-              startDate={startDate}
-              endDate={endDate}
-              placeholderText="End Date (optional)"
+            <DatePicker
+              selected={dateRange.startDate}
+              onChange={handleDateChange}
+              selectsRange
+              startDate={dateRange.startDate}
+              endDate={dateRange.endDate}
+              placeholderText="Select date range"
               isClearable
-          />
-
+            />
             <button className="ok-button" onClick={() => fetchFilteredData()}>
               OK
             </button>
@@ -197,8 +154,7 @@ function Dashboard() {
         <div className="chart-container">
           <PerformanceChart data={aggregatedData} />
         </div>
-        <Insights startDate={startDate} endDate={endDate} />
-
+        <Insights startDate={dateRange.startDate} endDate={dateRange.endDate} />
       </section>
     </div>
   );

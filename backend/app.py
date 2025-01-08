@@ -229,7 +229,53 @@ def get_insights():
 
     return jsonify(insights)
 
+@app.route('/aggregated-performance', methods=['GET'])
+def get_aggregated_performance():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
 
+    if not start_date or not end_date:
+        return jsonify({'error': 'Start date and end date are required'}), 400
+
+    conn = sqlite3.connect('performance.db')
+    cursor = conn.cursor()
+
+    # Aggregiere Daten nach `source` im angegebenen Datumsbereich
+    query = '''
+        SELECT
+            source AS channel,
+            SUM(costs) AS total_costs,
+            SUM(impressions) AS total_impressions,
+            SUM(clicks) AS total_clicks,
+            CASE WHEN SUM(clicks) > 0 THEN SUM(costs) / SUM(clicks) ELSE 0 END AS cost_per_click,
+            SUM(sessions) AS total_sessions,
+            SUM(conversions) AS total_conversions,
+            CASE WHEN SUM(conversions) > 0 THEN SUM(costs) / SUM(conversions) ELSE 0 END AS cost_per_conversion
+        FROM performance
+        WHERE DATE(date) BETWEEN DATE(?) AND DATE(?)
+        GROUP BY source
+        ORDER BY source;
+    '''
+    cursor.execute(query, (start_date, end_date))
+    rows = cursor.fetchall()
+    conn.close()
+
+    # Formatierung der Antwort
+    data = [
+        {
+            'source': row[0],
+            'costs': row[1],
+            'impressions': row[2],
+            'clicks': row[3],
+            'cost_per_click': row[4],
+            'sessions': row[5],
+            'conversions': row[6],
+            'cost_per_conversion': row[7],
+        }
+        for row in rows
+    ]
+
+    return jsonify(data)
 
 if __name__ == '__main__':
     init_db()
