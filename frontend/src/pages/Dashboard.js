@@ -13,6 +13,7 @@ function Dashboard() {
   const [startDate, setStartDate] = useState(null); // Startdatum
   const [endDate, setEndDate] = useState(null); // Enddatum
 
+
   // Setze den aktuellen Monat als Default
   useEffect(() => {
     const today = new Date();
@@ -88,6 +89,8 @@ function Dashboard() {
             });
         });
 };
+
+
 
 
 
@@ -194,7 +197,8 @@ function Dashboard() {
         <div className="chart-container">
           <PerformanceChart data={aggregatedData} />
         </div>
-        <Insights apiUrl="http://127.0.0.1:5000/insights" />
+        <Insights startDate={startDate} endDate={endDate} />
+
       </section>
     </div>
   );
