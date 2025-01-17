@@ -17,14 +17,22 @@
 To get campaigns, run get_campaigns.py.
 """
 
-
+import os
 import argparse
 import datetime
 import sys
 import uuid
+import certifi
+
 
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.errors import GoogleAdsException
+
+
+# Ensure the correct CA bundle is used
+os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+
+print("CA bundle configured at:", os.environ['REQUESTS_CA_BUNDLE'])
 
 
 _DATE_FORMAT = "%Y%m%d"
