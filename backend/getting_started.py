@@ -29,6 +29,7 @@ from google.ads.googleads.errors import GoogleAdsException
 
 _DATE_FORMAT = "%Y%m%d"
 customer_id = '2160203145'
+
 client = GoogleAdsClient.load_from_storage("C:\\Users\\Noemi\\DataPlunge\\google-ads.yaml")
 
 

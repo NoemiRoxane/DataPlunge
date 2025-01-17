@@ -26,7 +26,6 @@ use_proto_plus: True
 client_id: 187329401613-32vdapcu74mb7i9jojheadpit9mkg0kf.apps.googleusercontent.com
 client_secret: REDACTED
 refresh_token: REDACTED
-
 # Service Account configuration
 ##########################################################################################
 # To authenticate with a service account add the appropriate values to the below         #
