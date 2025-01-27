@@ -69,7 +69,5 @@ function PerformanceSummary({ data }) {
     </div>
   );
 }
-console.log('PerformanceSummary data:', data);
-
 
 export default PerformanceSummary;
