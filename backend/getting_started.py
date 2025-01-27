@@ -38,7 +38,19 @@ print("CA bundle configured at:", os.environ['REQUESTS_CA_BUNDLE'])
 _DATE_FORMAT = "%Y%m%d"
 customer_id = '2160203145'
 
-client = GoogleAdsClient.load_from_storage("C:\\Users\\Noemi\\DataPlunge\\google-ads.yaml")
+
+
+# Check if the YAML file is accessible
+yaml_path = "C:\\Users\\Noemi\\DataPlunge\\google-ads.yaml"
+try:
+    with open(yaml_path, 'r') as file:
+        print("google-ads.yaml is accessible.")
+except IOError:
+    print("google-ads.yaml not accessible or does not exist at", yaml_path)
+
+client = GoogleAdsClient.load_from_storage(yaml_path)
+
+
 
 
 
@@ -142,6 +154,6 @@ if __name__ == "__main__":
 
     # GoogleAdsClient will read the google-ads.yaml configuration file in the
     # home directory if none is specified.
-    googleads_client = GoogleAdsClient.load_from_storage(version="v18")
+    googleads_client = GoogleAdsClient.load_from_storage("C:\\Users\\Noemi\\DataPlunge\\google-ads.yaml", version="v17")
 
     main(googleads_client, args.customer_id)

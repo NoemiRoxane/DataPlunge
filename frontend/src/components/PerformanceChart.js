@@ -23,7 +23,7 @@ function PerformanceChart({ data }) {
 
   // Dynamische Labels basierend auf der Filterauswahl
   const chartData = {
-    labels: aggregatedData.map((item) => item.date),
+    labels: aggregatedData.map((item) => new Date(item.date).toLocaleDateString('en-US')), // Adjust locale as needed
     datasets: [
       {
         label: 'Costs',
@@ -47,6 +47,9 @@ function PerformanceChart({ data }) {
       },
     ],
   };
+  
+
+  
 
   // Optionen bleiben gleich, aber der Titel wird dynamisch angepasst
   const chartOptions = {
