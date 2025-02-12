@@ -1,89 +1,72 @@
 #!/usr/bin/env python
 import argparse
 import sys
-import sqlite3
-
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.errors import GoogleAdsException
 
-customer_id = '2160203145'
+# ✅ Path to Google Ads credentials
 yaml_path = "C:\\Users\\Noemi\\DataPlunge\\google-ads.yaml"
 
-try:
-    with open(yaml_path, 'r') as file:
-        print("google-ads.yaml is accessible.")
-except IOError:
-    print("google-ads.yaml not accessible or does not exist at", yaml_path)
-
+# ✅ Load Google Ads API client
 client = GoogleAdsClient.load_from_storage(yaml_path)
-conn = sqlite3.connect('performance.db')
-c = conn.cursor()
 
-def insert_data(data):
-    c.execute('''
-        INSERT INTO performance (date, costs, impressions, clicks, cost_per_click, source, conversions, cost_per_conversion)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', data)
-    conn.commit()
-
-def main(client, customer_id):
+def fetch_campaign_performance(client, login_customer_id, customer_id):
+    """Fetch and display Google Ads campaign performance metrics."""
     ga_service = client.get_service("GoogleAdsService")
+
     query = """
         SELECT
-        campaign.id,
-        campaign.name,
-        metrics.impressions,
-        metrics.clicks,
-        metrics.cost_micros,
-        metrics.conversions
+            campaign.id,
+            campaign.name,
+            metrics.impressions,
+            metrics.clicks,
+            metrics.cost_micros,
+            metrics.conversions
         FROM campaign
         WHERE segments.date DURING LAST_30_DAYS
         ORDER BY campaign.id
     """
-    stream = ga_service.search_stream(customer_id=customer_id, query=query)
+
+    # ✅ Include MCC (login_customer_id) in the request
+    stream = ga_service.search_stream(
+        customer_id=customer_id,
+        query=query,
+        metadata=(("login-customer-id", login_customer_id),),  # ✅ Ensure MCC ID is used
+    )
+
+    print("\n=== Google Ads Campaign Performance ===")
     for batch in stream:
         for row in batch.results:
-            cost = row.metrics.cost_micros / 1e6
-            cpc = cost / row.metrics.clicks if row.metrics.clicks > 0 else 0
-            cp_conversion = cost / row.metrics.conversions if row.metrics.conversions > 0 else 0
-            data = (
-                'today\'s date',  # Adjust the date accordingly
-                cost,
-                row.metrics.impressions,
-                row.metrics.clicks,
-                cpc,
-                'Google Ads',
-                row.metrics.conversions,
-                cp_conversion
-            )
-            insert_data(data)
-            print(f"Data for campaign {row.campaign.name} inserted into database.")
+            campaign = row.campaign
+            metrics = row.metrics
+
+            cost = metrics.cost_micros / 1e6  # Convert from micros to dollars
+            cpc = cost / metrics.clicks if metrics.clicks > 0 else 0
+            cp_conversion = cost / metrics.conversions if metrics.conversions > 0 else 0
+
+            print(f"Campaign ID: {campaign.id}, Name: {campaign.name}")
+            print(f"Costs: ${cost:.2f}, Impressions: {metrics.impressions}, Clicks: {metrics.clicks}")
+            print(f"Avg CPC: ${cpc:.2f}, Conversions: {metrics.conversions}, Cost per Conversion: ${cp_conversion:.2f}\n")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Lists all campaigns for specified customer."
-    )
-    parser.add_argument(
-        "-c",
-        "--customer_id",
-        type=str,
-        required=True,
-        help="The Google Ads customer ID.",
-    )
+    parser = argparse.ArgumentParser(description="Fetch Google Ads campaign performance metrics.")
+    parser.add_argument("-c", "--customer_id", type=str, required=True, help="The Google Ads client customer ID.")
+
     args = parser.parse_args()
 
     try:
-        main(client, args.customer_id)
+        # ✅ Get login_customer_id from `google-ads.yaml` (MCC ID)
+        login_customer_id = client.login_customer_id
+        if not login_customer_id:
+            raise ValueError("Error: login_customer_id is not set in google-ads.yaml")
+
+        fetch_campaign_performance(client, login_customer_id, args.customer_id)
+
     except GoogleAdsException as ex:
-        print(
-            f'Request with ID "{ex.request_id}" failed with status '
-            f'"{ex.error.code().name}" and includes the following errors:'
-        )
+        print(f'Request failed with ID "{ex.request_id}" and status "{ex.error.code().name}"')
         for error in ex.failure.errors:
-            print(f'\tError with message "{error.message}".')
+            print(f'Error: "{error.message}"')
             if error.location:
                 for field_path_element in error.location.field_path_elements:
-                    print(f"\t\tOn field: {field_path_element.field_name}")
+                    print(f"Field: {field_path_element.field_name}")
         sys.exit(1)
-    finally:
-        conn.close()
