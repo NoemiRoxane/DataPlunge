@@ -16,11 +16,18 @@ function Dashboard() {
   // Setze den aktuellen Monat als Default
   useEffect(() => {
     const today = new Date();
-    const firstDay = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)); // Erster Tag des Monats (UTC)
-    const lastDay = new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 0)); // Letzter Tag des Monats (UTC)
+    const firstDay = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1));
+    const lastDay = new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 0));
+  
     setDateRange({ startDate: firstDay, endDate: lastDay });
-    fetchFilteredData(firstDay, lastDay); // Lade Daten für den aktuellen Monat
-  }, [setDateRange]);
+  }, [setDateRange]); // This ensures the state is updated first
+  
+  // New effect to trigger fetch AFTER state is updated
+  useEffect(() => {
+    if (dateRange.startDate && dateRange.endDate) {
+      fetchFilteredData(dateRange.startDate, dateRange.endDate);
+    }
+  }, [dateRange]); // This runs after dateRange is set
 
   const fetchFilteredData = (start = dateRange.startDate, end = dateRange.endDate) => {
     if (!start || !end) {
