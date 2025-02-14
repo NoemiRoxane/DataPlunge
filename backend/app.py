@@ -9,14 +9,6 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-app.secret_key = "your_secret_key"  # Replace with a secure random key
-
-# ✅ Replace with your credentials from google-ads.yaml
-CLIENT_ID = "187329401613-32vdapcu74mb7i9jojheadpit9mkg0kf.apps.googleusercontent.com"
-CLIENT_SECRET = "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"
-REDIRECT_URI = "http://localhost:5000/oauth/callback"
-SCOPE = "https://www.googleapis.com/auth/adwords"
-
 
 CORS(app)  # Enable CORS for all routes
 
