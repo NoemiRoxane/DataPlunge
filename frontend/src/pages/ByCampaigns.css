@@ -1,0 +1,43 @@
+.page-container {
+    padding: 20px;
+    background: #f9f9f9;
+    min-height: 100vh;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 15px;
+}
+
+.filters {
+    display: flex;
+    gap: 10px;
+}
+
+.search-input, input[type="date"] {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.filter-button, .export-button {
+    padding: 8px 12px;
+    border: none;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.filter-button:hover, .export-button:hover {
+    background-color: #0056b3;
+}
+
+
+  .rdt_TableCell {
+    white-space: normal !important; /* ✨ Erlaubt Zeilenumbrüche */
+    word-break: break-word !important; /* ✨ Bricht lange Wörter */
+    max-width: 400px; /* ✨ Optional: Maximale Breite für bessere Lesbarkeit */
+  }

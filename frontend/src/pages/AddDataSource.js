@@ -13,26 +13,36 @@ const dataSources = [
   { name: "TikTok", icon: "🎵" },
   { name: "X Ads", icon: "❌" },
 ];
-
 function AddDataSource() {
-  const handleConnect = async (source) => {
-    try {
-      const response = await fetch('http://localhost:5000/add-data-source', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: source.name }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        alert(`Successfully connected: ${source.name}`);
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (error) {
-      console.error('Error connecting data source:', error);
-      alert('Failed to connect data source');
+  const handleConnect = (source) => {
+    if (source.name === "Google Ads") {
+        window.location.href = "http://localhost:5000/google-ads/login";
+        
+        // ✅ Fetch campaigns automatically after connection
+        setTimeout(() => {
+            fetch("http://localhost:5000/google-ads/fetch-campaigns")
+                .then(response => response.json())
+                .then(data => {
+                    console.log("📊 Fetched Campaign Data:", data);
+                    if (data.error) {
+                        alert("Error fetching campaigns: " + data.error);
+                    } else {
+                        alert("Campaign data successfully fetched!");
+                    }
+                })
+                .catch(error => alert("Failed to fetch campaigns: " + error));
+        }, 5000); // Delay to allow OAuth login to complete
+    } else {
+        fetch("http://localhost:5000/add-data-source", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source: source.name }),
+        })
+        .then(response => response.json())
+        .then(data => alert(`Successfully connected: ${source.name}`))
+        .catch(error => alert("Failed to connect data source"));
     }
-  };
+};
 
   return (
     <div className="page-container">

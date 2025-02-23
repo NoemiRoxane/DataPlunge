@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-do
 import { DateProvider } from './pages/DateContext'; // Importiere den DateProvider
 import Dashboard from './pages/Dashboard';
 import ByChannels from './pages/ByChannels';
+import ByCampaigns from './pages/ByCampaigns';
 import AddDataSource from './pages/AddDataSource';
 import './styles.css';
 
@@ -50,12 +51,14 @@ function App() {
                     Add Data manually
                   </NavLink>
                 </li>
+
               </ul>
             </aside>
             <main className="main-content">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/channels" element={<ByChannels />} />
+                <Route path="/campaigns" element={<ByCampaigns />} />
                 <Route path="/add-data-source" element={<AddDataSource />} />
                 <Route path="/add-data-manually" element={<div>Add Data Manually Page</div>} />
               </Routes>
