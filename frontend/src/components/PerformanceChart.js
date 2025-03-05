@@ -21,37 +21,35 @@ function PerformanceChart({ data }) {
     return acc;
   }, []);
 
-  // Dynamische Labels basierend auf der Filterauswahl
+  // Berechne Cost per Conversion
   const chartData = {
-    labels: aggregatedData.map((item) => new Date(item.date).toLocaleDateString('en-US')), // Adjust locale as needed
+    labels: aggregatedData.map((item) => new Date(item.date).toLocaleDateString('en-US')),
     datasets: [
       {
-        label: 'Costs',
+        label: 'Conversions',
         type: 'line',
-        data: aggregatedData.map((item) => item.costs),
+        data: aggregatedData.map((item) => item.conversions),
         borderColor: '#0385B7',
         borderWidth: 2,
         pointBackgroundColor: '#0385B7',
         fill: true,
         backgroundColor: 'rgba(147, 196, 214, 0.4)',
-        yAxisID: 'y2',
+        yAxisID: 'y',
       },
       {
-        label: 'Conversions',
+        label: 'Cost per Conversion',
         type: 'bar',
-        data: aggregatedData.map((item) => item.conversions),
+        data: aggregatedData.map((item) => (item.conversions > 0 ? item.costs / item.conversions : 0)),
         backgroundColor: '#00427F',
         borderRadius: 6,
         barPercentage: 0.6,
         categoryPercentage: 0.8,
+        yAxisID: 'y2',
       },
     ],
   };
-  
 
-  
-
-  // Optionen bleiben gleich, aber der Titel wird dynamisch angepasst
+  // Optionen anpassen
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,

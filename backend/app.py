@@ -6,6 +6,8 @@ import psycopg2
 from psycopg2.extras import DictCursor
 from datetime import datetime
 from google.ads.googleads.client import GoogleAdsClient
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from dotenv import load_dotenv
 import os
 
@@ -35,7 +37,7 @@ def close_db(error):
     if db is not None:
         db.close()
 
-
+# 🛠 Refresh Token speichern
 def store_refresh_token(customer_id, refresh_token):
     """Speichert oder aktualisiert das Refresh Token in der Datenbank."""
     with get_db() as conn:
@@ -50,6 +52,7 @@ def store_refresh_token(customer_id, refresh_token):
             )
             conn.commit()
 
+# 🛠 Refresh Token abrufen
 def get_refresh_token(customer_id):
     """Holt das gespeicherte Refresh Token aus der Datenbank."""
     with get_db() as conn:
@@ -63,16 +66,10 @@ def get_refresh_token(customer_id):
 
 def refresh_access_token(customer_id):
     """Holt das gespeicherte Refresh Token aus der DB und erneuert das Access Token."""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT refresh_token FROM google_ads_tokens WHERE customer_id = %s", (customer_id,))
-            result = cursor.fetchone()
-
-    if not result:
-        print(f"❌ Kein Refresh Token für Customer {customer_id} gefunden. Erneute Anmeldung erforderlich.")
+    
+    refresh_token = get_refresh_token(customer_id)
+    if not refresh_token: REDACTED
         return None
-
-    refresh_token = result[0]
 
     token_url = "https://oauth2.googleapis.com/token"
     token_data = {
@@ -87,12 +84,40 @@ def refresh_access_token(customer_id):
 
     if "access_token" in new_token_info:
         print("✅ Access Token erfolgreich erneuert!")
+        session["access_token"] = new_token_info["access_token"] 
         return new_token_info["access_token"]
     else:
         print("❌ Fehler beim Erneuern des Tokens:", new_token_info)
+        
+        # ⬇️ Falls der Refresh Token ungültig ist, zwinge eine erneute Anmeldung
+        if new_token_info.get("error") == "invalid_grant":
+            print(f"🔄 Refresh Token für {customer_id} ist ungültig. Erneute Anmeldung erforderlich.")
+            delete_refresh_token(customer_id)
+            return None
+
         return None
 
+# Funktion zum Löschen ungültiger Refresh Tokens
+def delete_refresh_token(customer_id):
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM google_ads_tokens WHERE customer_id = %s;", (customer_id,))
+            conn.commit()
 
+# 🔥 Customer ID aus Google Ads API abrufen
+def get_customer_id_from_api(access_token):
+    """Holt die Google Ads Customer ID für den aktuellen Nutzer."""
+    url = "https://googleads.googleapis.com/v12/customers:listAccessibleCustomers"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    response = requests.get(url, headers=headers)
+    data = response.json()
+
+    if "resourceNames" in data:
+        return [cust.split("/")[-1] for cust in data["resourceNames"]]  # Extrahiere die ID
+
+    print("❌ Fehler beim Abrufen der Customer ID:", data)
+    return None
 
 
 
@@ -135,11 +160,18 @@ def google_ads_callback():
     access_token = token_json["access_token"]
     refresh_token = token_json.get("refresh_token")  # 🔥 WICHTIG: Nur falls vorhanden!
 
-    customer_id = "4008564417"  # Falls dynamisch, aus Session oder DB holen
+    
+    # 🔥 **Customer ID aus API holen**
+    customer_ids = get_customer_id_from_api(access_token)
+    if not customer_ids:
+        return jsonify({"error": "Customer ID konnte nicht abgerufen werden"}), 500
 
-    if refresh_token: REDACTED
+    for customer_id in customer_ids:
+        if refresh_token: REDACTED
+            print(f"✅ Refresh Token gespeichert für {customer_id}: {refresh_token}")
+        else:
+            print(f"⚠️ Kein Refresh Token für {customer_id} zurückgegeben!")
 
-    print(f"🔑 Access Token: {access_token}")
 
     result = fetch_and_store_campaigns()
 
@@ -149,6 +181,47 @@ def google_ads_callback():
     return redirect("http://localhost:3000")
 
 
+def get_google_ads_client(customer_id):
+    """Lädt dynamisch den Google Ads Client mit dem gespeicherten refresh_token aus der DB."""
+    
+    refresh_token = get_refresh_token(customer_id)  # Holt Token aus DB
+    if not refresh_token: REDACTED
+        return None
+
+    try:
+        creds = Credentials(
+            None,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+        )
+
+        # Token erneuern
+        creds.refresh(Request())
+
+        # Google Ads Client mit dynamischen Credentials laden
+        client = GoogleAdsClient.load_from_dict({
+            "developer_token": "Z0JS-BxTiTPDgbOH2KwcMA",
+            "use_proto_plus": True,
+            "login_customer_id": customer_id,
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "refresh_token": refresh_token,  # Direktes Einfügen des Tokens
+        })
+
+        return client
+    except Exception as e:
+        print(f"❌ Fehler beim Laden des Google Ads Clients für {customer_id}: {e}")
+        return None
+
+def get_customer_id_from_db():
+    """Holt die gespeicherte Google Ads Customer ID aus der Datenbank."""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT customer_id FROM google_ads_tokens LIMIT 1;")  # Falls du nur einen speicherst
+            result = cursor.fetchone()
+            return result[0] if result else None
 
 
 
@@ -156,19 +229,23 @@ def google_ads_callback():
 @app.route('/google-ads/fetch-campaigns')
 def fetch_and_store_campaigns():
     """Fetch Google Ads campaign data and store it in the DB."""
+    
+    # 🔥 Customer ID aus Session oder DB holen
+    customer_id = session.get("customer_id") or get_customer_id_from_db()
+    if not customer_id:
+        return jsonify({"error": "Customer ID nicht gefunden"}), 400
 
-    # ✅ Falls kein Access Token vorhanden, erneuern
-    if "access_token" not in session:
-        print("❌ Kein Access Token vorhanden. Versuche, es zu erneuern...")
-        access_token = refresh_access_token()
-        if not access_token:
-            return jsonify({"error": "Authentication required. Please log in again."}), 401
+    # ✅ Lade den Google Ads Client mit OAuth2-Credentials
+    client = get_google_ads_client(customer_id)
+    if not client:
+        return jsonify({"error": "Google Ads Client konnte nicht erstellt werden."}), 500
 
-    # ✅ `customer_id` direkt definieren (nicht als Argument)
-    customer_id = "4008564417"  # Falls dynamisch, session["customer_id"] verwenden
-
-    client = GoogleAdsClient.load_from_storage("google-ads.yaml")
-    ga_service = client.get_service("GoogleAdsService")
+    # ✅ Google Ads Service abrufen
+    try:
+        ga_service = client.get_service("GoogleAdsService")
+    except Exception as e:
+        print(f"❌ Fehler beim Abrufen des Google Ads Service: {e}")
+        return jsonify({"error": "Google Ads Client Fehler", "details": str(e)}), 500
 
     query = """
         SELECT
@@ -260,14 +337,7 @@ def fetch_and_store_campaigns():
                         cost_per_click = EXCLUDED.cost_per_click, 
                         sessions = EXCLUDED.sessions,
                         conversions = EXCLUDED.conversions,
-                        cost_per_conversion = EXCLUDED.cost_per_conversion
-                    WHERE performanceMetrics.costs <> EXCLUDED.costs
-                    OR performanceMetrics.impressions <> EXCLUDED.impressions
-                    OR performanceMetrics.clicks <> EXCLUDED.clicks
-                    OR performanceMetrics.cost_per_click <> EXCLUDED.cost_per_click
-                    OR performanceMetrics.sessions <> EXCLUDED.sessions
-                    OR performanceMetrics.conversions <> EXCLUDED.conversions
-                    OR performanceMetrics.cost_per_conversion <> EXCLUDED.cost_per_conversion;
+                        cost_per_conversion = EXCLUDED.cost_per_conversion;
                 """, (
                     data_source_id, campaign_id, data["date"], data["costs"], data["impressions"], data["clicks"],
                     data["cost_per_click"], data["sessions"], data["conversions"], data["cost_per_conversion"]
@@ -279,7 +349,6 @@ def fetch_and_store_campaigns():
             print("✅ Successfully stored campaign data!")
 
     return jsonify({"message": "Campaign data stored successfully"}), 200
-
 
 
 @app.route('/filter-performance', methods=['GET'])
@@ -448,18 +517,19 @@ def get_campaigns():
                 SELECT 
                     ds.source_name AS traffic_source,
                     c.campaign_name, 
-                    pm.costs, 
-                    pm.impressions, 
-                    pm.clicks, 
-                    pm.cost_per_click, 
-                    pm.sessions, 
-                    (pm.costs / NULLIF(pm.sessions, 0)) AS cost_per_session,
-                    pm.conversions, 
-                    pm.cost_per_conversion
+                    SUM(pm.costs) AS total_costs, 
+                    SUM(pm.impressions) AS total_impressions, 
+                    SUM(pm.clicks) AS total_clicks, 
+                    CASE WHEN SUM(pm.clicks) > 0 THEN SUM(pm.costs) / SUM(pm.clicks) ELSE 0 END AS avg_cpc,
+                    SUM(pm.sessions) AS total_sessions, 
+                    CASE WHEN SUM(pm.sessions) > 0 THEN SUM(pm.costs) / SUM(pm.sessions) ELSE 0 END AS avg_cost_per_session,
+                    SUM(pm.conversions) AS total_conversions, 
+                    CASE WHEN SUM(pm.conversions) > 0 THEN SUM(pm.costs) / SUM(pm.conversions) ELSE 0 END AS avg_cost_per_conversion
                 FROM performanceMetrics pm
                 JOIN datasources ds ON pm.data_source_id = ds.id
                 JOIN campaigns c ON pm.campaign_id = c.id
-                ORDER BY pm.costs DESC;
+                GROUP BY ds.source_name, c.campaign_name
+                ORDER BY total_costs DESC;
             """)
             campaigns = cursor.fetchall()
 
@@ -473,7 +543,7 @@ def get_campaigns():
             "clicks": row[4],
             "cost_per_click": row[5],
             "sessions": row[6],
-            "cost_per_session": row[7] if row[7] is not None else 0,
+            "cost_per_session": row[7],
             "conversions": row[8],
             "cost_per_conversion": row[9],
         }

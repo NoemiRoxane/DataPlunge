@@ -6,21 +6,42 @@ import Insights from '../components/Insights';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './dashboard.css';
-import { useDate } from './DateContext'; // Importiere den useDate Hook
+import { useDate } from '../context/DateContext'; // Verwende den DateContext
+
 
 function Dashboard() {
   const { dateRange, setDateRange } = useDate(); // Verwende den DateContext
   const [filteredData, setFilteredData] = useState([]); // Gefilterte Daten
   const [aggregatedData, setAggregatedData] = useState([]); // Aggregierte Daten
 
-  // Setze den aktuellen Monat als Default
-  useEffect(() => {
+// Setze beim allerersten Aufruf den aktuellen Monat, danach bleibt das gewählte Datum erhalten
+useEffect(() => {
+  const savedDateRange = localStorage.getItem("dateRange");
+  if (savedDateRange) {
+    // Falls der User schon einen Zeitraum gewählt hat, diesen verwenden
+    const parsedDateRange = JSON.parse(savedDateRange);
+    setDateRange({
+      startDate: new Date(parsedDateRange.startDate),
+      endDate: new Date(parsedDateRange.endDate),
+    });
+  } else {
+    // Falls es keinen gespeicherten Zeitraum gibt (erster Aufruf), den aktuellen Monat setzen
     const today = new Date();
-    const firstDay = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1));
-    const lastDay = new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 0));
-  
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
     setDateRange({ startDate: firstDay, endDate: lastDay });
-  }, [setDateRange]); // This ensures the state is updated first
+
+    // Direkt in localStorage speichern, damit es erhalten bleibt
+    localStorage.setItem("dateRange", JSON.stringify({
+      startDate: firstDay.toISOString(),
+      endDate: lastDay.toISOString(),
+    }));
+  }
+}, []); // `[]` sorgt dafür, dass es nur beim ersten Rendern ausgeführt wird
+
+
+
   
   // New effect to trigger fetch AFTER state is updated
   useEffect(() => {
@@ -29,9 +50,8 @@ function Dashboard() {
     }
   }, [dateRange]); // This runs after dateRange is set
 
-  const fetchFilteredData = (start = dateRange.startDate, end = dateRange.endDate) => {
+  const fetchFilteredData = (start, end) => {
     if (!start || !end) {
-      console.log('Start or end date is missing.');
       toast.error('Please select both start and end dates.');
       return;
     }
@@ -39,7 +59,7 @@ function Dashboard() {
     const normalizedStart = start.toISOString().split('T')[0];
     const normalizedEnd = end.toISOString().split('T')[0];
     const value = `${normalizedStart}|${normalizedEnd}`;
-
+    
     // Debugging Logs
     console.log('Selected Start Date:', start);
     console.log('Selected End Date:', end);
@@ -135,15 +155,14 @@ function Dashboard() {
   
     setAggregatedData(sortedFilledData);
   };
-  
-  
-  
-
   const handleDateChange = (dates) => {
     const [start, end] = dates;
     setDateRange({ startDate: start, endDate: end });
-    fetchFilteredData(start, end);
   };
+
+  
+  
+  
 
   return (
     <div className="page-container">
@@ -152,15 +171,17 @@ function Dashboard() {
         <h1>Performance Overall</h1>
         <div className="header-controls">
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <DatePicker
-              selected={dateRange.startDate}
-              onChange={handleDateChange}
-              selectsRange
-              startDate={dateRange.startDate}
-              endDate={dateRange.endDate}
-              placeholderText="Select date range"
-              isClearable
-            />
+          <DatePicker
+            selected={dateRange.startDate}
+            onChange={handleDateChange}
+            selectsRange
+            startDate={dateRange.startDate}
+            endDate={dateRange.endDate}
+            placeholderText="Select date range"
+            isClearable
+          />
+
+
             <button className="ok-button" onClick={() => fetchFilteredData()}>
               OK
             </button>
@@ -175,7 +196,6 @@ function Dashboard() {
               ? aggregatedData.reduce((sum, item) => sum + (item.costs || 0), 0).toFixed(2)
               : '0.00'}
           </p>
-          <span className="trend positive">+20% month over month</span>
         </div>
         <div className="card">
           <h3>Conversions</h3>
@@ -184,7 +204,6 @@ function Dashboard() {
               ? aggregatedData.reduce((sum, item) => sum + (item.conversions || 0), 0)
               : '0'}
           </p>
-          <span className="trend positive">+33% month over month</span>
         </div>
         <div className="card">
           <h3>Cost per Conversion</h3>
@@ -197,7 +216,6 @@ function Dashboard() {
                 ).toFixed(2)
               : '0.00'}
           </p>
-          <span className="trend negative">-8% month over month</span>
         </div>
       </section>
       <section className="chart-insights">

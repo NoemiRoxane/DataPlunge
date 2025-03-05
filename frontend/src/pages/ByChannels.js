@@ -4,7 +4,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import Insights from '../components/Insights';
 import './ByChannels.css';
-import { useDate } from './DateContext'; // Importiere den useDate Hook
+import { useDate } from '../context/DateContext'; // Importiere den useDate Hook
 
 function ByChannels() {
   const navigate = useNavigate();

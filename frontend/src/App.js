@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
-import { DateProvider } from './pages/DateContext'; // Importiere den DateProvider
+import { DateProvider } from './context/DateContext'; // Importiere den DateProvider
 import Dashboard from './pages/Dashboard';
 import ByChannels from './pages/ByChannels';
 import ByCampaigns from './pages/ByCampaigns';
