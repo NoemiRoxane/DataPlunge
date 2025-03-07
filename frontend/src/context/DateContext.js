@@ -16,15 +16,15 @@ export const DateProvider = ({ children }) => {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    
+
     return { startDate: firstDay, endDate: lastDay };
   });
 
   useEffect(() => {
     if (dateRange.startDate && dateRange.endDate) {
       localStorage.setItem("dateRange", JSON.stringify({
-        startDate: dateRange.startDate.toISOString(),
-        endDate: dateRange.endDate.toISOString(),
+        startDate: dateRange.startDate.toISOString().split("T")[0], // Remove time part
+        endDate: dateRange.endDate.toISOString().split("T")[0],
       }));
     }
   }, [dateRange]);
@@ -35,5 +35,6 @@ export const DateProvider = ({ children }) => {
     </DateContext.Provider>
   );
 };
+
 
 export const useDate = () => useContext(DateContext);

@@ -511,6 +511,9 @@ def get_aggregated_performance():
 
 @app.route("/get-campaigns", methods=["GET"])
 def get_campaigns():
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+
     with get_db() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -528,24 +531,25 @@ def get_campaigns():
                 FROM performanceMetrics pm
                 JOIN datasources ds ON pm.data_source_id = ds.id
                 JOIN campaigns c ON pm.campaign_id = c.id
+                WHERE pm.date BETWEEN %s AND %s
                 GROUP BY ds.source_name, c.campaign_name
                 ORDER BY total_costs DESC;
-            """)
+            """, (start_date, end_date))
+
             campaigns = cursor.fetchall()
 
-    # JSON-Format zurückgeben
     return jsonify([
         {
             "traffic_source": row[0],
             "campaign_name": row[1],
-            "costs": row[2],
+            "costs": float(row[2]),
             "impressions": row[3],
             "clicks": row[4],
-            "cost_per_click": row[5],
+            "cost_per_click": float(row[5]),
             "sessions": row[6],
-            "cost_per_session": row[7],
+            "cost_per_session": float(row[7]),
             "conversions": row[8],
-            "cost_per_conversion": row[9],
+            "cost_per_conversion": float(row[9]),
         }
         for row in campaigns
     ])
