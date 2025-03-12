@@ -17,6 +17,11 @@ app = Flask(__name__)
 load_dotenv()
 app.secret_key = os.getenv("SECRET_KEY")
 
+MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID")
+MICROSOFT_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET")
+MICROSOFT_TENANT_ID = os.getenv("MICROSOFT_TENANT_ID")
+MICROSOFT_REDIRECT_URI = os.getenv("MICROSOFT_REDIRECT_URI")
+
 
 CORS(app)  # Enable CORS for all routes
 
@@ -349,6 +354,20 @@ def fetch_and_store_campaigns():
             print("✅ Successfully stored campaign data!")
 
     return jsonify({"message": "Campaign data stored successfully"}), 200
+
+
+@app.route('/microsoft-ads/login')
+def microsoft_ads_login():
+    """Leitet den User zu Microsoft OAuth für Microsoft Ads."""
+    microsoft_auth_url = (
+        f"https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}/oauth2/v2.0/authorize?"
+        f"client_id={MICROSOFT_CLIENT_ID}"
+        f"&response_type=code"
+        f"&redirect_uri={MICROSOFT_REDIRECT_URI}"
+        "&scope=https://ads.microsoft.com/msads.manage offline_access"
+    )
+    return redirect(microsoft_auth_url)
+
 
 
 @app.route('/filter-performance', methods=['GET'])
