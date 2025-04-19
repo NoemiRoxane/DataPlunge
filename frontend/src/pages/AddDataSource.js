@@ -6,43 +6,75 @@ const dataSources = [
   { name: "Microsoft Advertising", icon: "🟢" },
   { name: "Facebook Ads", icon: "🔵" },
   { name: "Google Analytics", icon: "📊" },
-  { name: "LinkedIn", icon: "🔗" },
-  { name: "Pinterest", icon: "📌" },
-  { name: "Reddit", icon: "👽" },
-  { name: "Snapchat", icon: "👻" },
-  { name: "TikTok", icon: "🎵" },
-  { name: "X Ads", icon: "❌" },
+  { name: "Meta", icon: "🔗" },
+ 
 ];
+
+// ✅ Alle Plattformen, die OAuth 2.0 verwenden
+const oauthSources = [
+  "Google Ads",
+  "Microsoft Advertising",
+  "Facebook Ads",
+  "Google Analytics",
+  "LinkedIn",
+  "TikTok",
+  "Snapchat",
+];
+
 function AddDataSource() {
   const handleConnect = (source) => {
+    const sourcePath = source.name.toLowerCase().replace(/\s+/g, "-");
+
     if (source.name === "Google Ads") {
-        window.location.href = "http://localhost:5000/google-ads/login";
-        
-        // ✅ Fetch campaigns automatically after connection
-        setTimeout(() => {
-            fetch("http://localhost:5000/google-ads/fetch-campaigns")
-                .then(response => response.json())
-                .then(data => {
-                    console.log("📊 Fetched Campaign Data:", data);
-                    if (data.error) {
-                        alert("Error fetching campaigns: " + data.error);
-                    } else {
-                        alert("Campaign data successfully fetched!");
-                    }
-                })
-                .catch(error => alert("Failed to fetch campaigns: " + error));
-        }, 5000); // Delay to allow OAuth login to complete
-    } else {
-        fetch("http://localhost:5000/add-data-source", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ source: source.name }),
-        })
-        .then(response => response.json())
-        .then(data => alert(`Successfully connected: ${source.name}`))
-        .catch(error => alert("Failed to connect data source"));
+      window.location.href = "http://localhost:5000/google-ads/login";
+
+      // ✅ Fetch campaigns automatically after login
+      setTimeout(() => {
+        fetch("http://localhost:5000/google-ads/fetch-campaigns")
+          .then((res) => res.json())
+          .then((data) => {
+            console.log("📊 Google Campaign Data:", data);
+            if (data.error) {
+              alert("Google Ads error: " + data.error);
+            } else {
+              alert("Google campaign data fetched!");
+            }
+          })
+          .catch((err) => alert("Error fetching Google campaigns: " + err));
+      }, 5000);
     }
-};
+
+    else if (source.name === "Microsoft Advertising") {
+      window.location.href = "http://localhost:5000/microsoft-advertising/login";
+
+      // ✅ Fetch campaigns automatically after login
+      setTimeout(() => {
+        fetch("http://localhost:5000/microsoft-ads/fetch-campaigns")
+          .then((res) => res.json())
+          .then((data) => {
+            console.log("📊 Microsoft Campaign Data:", data);
+            if (data.error) {
+              alert("Microsoft Ads error: " + data.error);
+            } else {
+              alert("Microsoft campaign data fetched!");
+            }
+          })
+          .catch((err) => alert("Error fetching Microsoft campaigns: " + err));
+      }, 5000);
+    }
+
+    else {
+      // 📩 For non-OAuth platforms (e.g., static API Keys or partner access)
+      fetch("http://localhost:5000/add-data-source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: source.name }),
+      })
+        .then((response) => response.json())
+        .then((data) => alert(`Successfully connected: ${source.name}`))
+        .catch((error) => alert("Failed to connect data source"));
+    }
+  };
 
   return (
     <div className="page-container">

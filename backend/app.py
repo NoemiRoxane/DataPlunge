@@ -355,18 +355,144 @@ def fetch_and_store_campaigns():
 
     return jsonify({"message": "Campaign data stored successfully"}), 200
 
+@app.route('/microsoft-ads/callback')
+def microsoft_ads_callback():
+    """Microsoft Ads OAuth Callback: Holt Access Token & Customer ID."""
+    code = request.args.get("code")
+    if not code:
+        return jsonify({"error": "Authorization failed"}), 400
 
-@app.route('/microsoft-ads/login')
+    # 📌 Access Token abrufen
+    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"  # ⬅️ `common`
+    token_data = {
+        "client_id": MICROSOFT_CLIENT_ID,
+        "client_secret": MICROSOFT_CLIENT_SECRET,
+        "code": code,
+        "grant_type": "authorization_code",
+        "redirect_uri": MICROSOFT_REDIRECT_URI
+    }
+
+    response = requests.post(token_url, data=token_data)
+    token_json = response.json()
+
+    if "access_token" not in token_json:
+        return jsonify({"error": "Token exchange failed", "details": token_json}), 400
+
+    access_token = token_json["access_token"]
+    refresh_token = token_json.get("refresh_token")  # Optional, falls vorhanden
+
+    # 📌 Customer ID abrufen
+    customer_id = get_microsoft_ads_customer_id(access_token)
+    if not customer_id:
+        return jsonify({"error": "Microsoft Ads Customer ID konnte nicht abgerufen werden"}), 500
+
+    # 📌 Refresh Token speichern, falls vorhanden
+    if refresh_token: REDACTED
+        print(f"✅ Microsoft Ads Refresh Token gespeichert für {customer_id}: {refresh_token}")
+    else:
+        print(f"⚠️ Kein Refresh Token für {customer_id} zurückgegeben!")
+
+    return redirect("http://localhost:3000")  # 🔄 Weiterleitung zum Frontend
+
+
+
+def store_microsoft_refresh_token(customer_id, refresh_token):
+    """Speichert oder aktualisiert das Refresh Token für Microsoft Ads."""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO microsoft_ads_tokens (customer_id, refresh_token)
+                VALUES (%s, %s)
+                ON CONFLICT (customer_id) DO UPDATE SET refresh_token = EXCLUDED.refresh_token;
+                """,
+                (customer_id, refresh_token),
+            )
+            conn.commit()
+
+
+def refresh_microsoft_access_token(refresh_token):
+    token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    token_data = {
+        "client_id": MICROSOFT_CLIENT_ID,
+        "client_secret": MICROSOFT_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+        "redirect_uri": MICROSOFT_REDIRECT_URI,
+    }
+
+    response = requests.post(token_url, data=token_data)
+    token_json = response.json()
+
+    if "access_token" in token_json:
+        print("✅ Microsoft Access Token erfolgreich erneuert!")
+        return token_json["access_token"]
+    else:
+        print("❌ Fehler beim Erneuern des Microsoft Tokens:", token_json)
+        return None
+
+
+@app.route('/microsoft-ads/fetch-campaigns')
+def fetch_microsoft_campaigns():
+    customer_id = session.get("microsoft_customer_id")  # Später via session oder DB
+    if not customer_id:
+        return jsonify({"error": "Customer ID not found"}), 400
+
+    refresh_token = get_microsoft_refresh_token(customer_id)
+    if not refresh_token: REDACTED
+
+    # Beispiel: Zugriff mit Token (diese API musst du für echte Kampagnendaten anpassen)
+    access_token = refresh_microsoft_access_token(refresh_token)
+    if not access_token:
+        return jsonify({"error": "Unable to refresh token"}), 500
+
+    # Placeholder: Daten abrufen
+    headers = {"Authorization": f"Bearer {access_token}"}
+    r = requests.get("https://api.business.microsoft.com/v13.0/customers", headers=headers)
+    data = r.json()
+
+    return jsonify(data)
+
+def get_microsoft_refresh_token(customer_id):
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT refresh_token FROM microsoft_ads_tokens WHERE customer_id = %s;", (customer_id,))
+            result = cursor.fetchone()
+            return result[0] if result else None
+
+
+
+@app.route('/microsoft-advertising/login')
 def microsoft_ads_login():
     """Leitet den User zu Microsoft OAuth für Microsoft Ads."""
     microsoft_auth_url = (
-        f"https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}/oauth2/v2.0/authorize?"
+        f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?"  # ⬅️ `common` statt `MICROSOFT_TENANT_ID`
         f"client_id={MICROSOFT_CLIENT_ID}"
         f"&response_type=code"
         f"&redirect_uri={MICROSOFT_REDIRECT_URI}"
-        "&scope=https://ads.microsoft.com/msads.manage offline_access"
+        f"&scope=https://ads.microsoft.com/msads.manage offline_access"
+        f"&prompt=consent"
     )
     return redirect(microsoft_auth_url)
+
+
+def get_microsoft_ads_customer_id(access_token):
+    """Holt die Microsoft Ads Customer ID für den aktuellen Nutzer."""
+    url = "https://api.business.microsoft.com/v13.0/customers"
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+
+    response = requests.get(url, headers=headers)
+    data = response.json()
+
+    if "customers" in data and len(data["customers"]) > 0:
+        return data["customers"][0]["id"]  # Erste Customer ID zurückgeben
+
+    print("❌ Keine Microsoft Ads Customer ID gefunden!", data)
+    return None
+
+
 
 
 
