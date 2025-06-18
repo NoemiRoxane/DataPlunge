@@ -1,16 +1,17 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
-import { DateProvider } from './context/DateContext'; // Importiere den DateProvider
+import { DateProvider } from './context/DateContext';
 import Dashboard from './pages/Dashboard';
 import ByChannels from './pages/ByChannels';
 import ByCampaigns from './pages/ByCampaigns';
 import AddDataSource from './pages/AddDataSource';
+import GAConnectionPage from './pages/GAConnectionPage'; // ✅ neue GA-Onboarding-Seite
 import './styles.css';
 
 function App() {
   return (
     <Router>
-      <DateProvider> {/* Umgib deine Routen mit dem DateProvider */}
+      <DateProvider>
         <div className="app-container">
           <header className="top-header">
             <div className="header-title">
@@ -18,6 +19,7 @@ function App() {
               <span style={{ marginLeft: '8px' }} className="header-title-plunge">Plunge</span>
             </div>
           </header>
+
           <div className="content-wrapper">
             <aside className="sidebar">
               <ul className="sidebar-menu">
@@ -51,9 +53,9 @@ function App() {
                     Add Data manually
                   </NavLink>
                 </li>
-
               </ul>
             </aside>
+
             <main className="main-content">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
@@ -61,6 +63,9 @@ function App() {
                 <Route path="/campaigns" element={<ByCampaigns />} />
                 <Route path="/add-data-source" element={<AddDataSource />} />
                 <Route path="/add-data-manually" element={<div>Add Data Manually Page</div>} />
+                
+                {/* ✅ Neue dedizierte Seite für GA-Onboarding */}
+                <Route path="/connect/google-analytics" element={<GAConnectionPage />} />
               </Routes>
             </main>
           </div>

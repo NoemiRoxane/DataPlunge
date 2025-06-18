@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import './AddDataSource.css';
+import GASelector from "../components/GASelector";
+import GAConnector from "../components/GAConnector";
+
 
 const dataSources = [
   { name: "Google Ads", icon: "🟢" },
@@ -7,7 +10,6 @@ const dataSources = [
   { name: "Facebook Ads", icon: "🔵" },
   { name: "Google Analytics", icon: "📊" },
   { name: "Meta", icon: "🔗" },
- 
 ];
 
 // ✅ Alle Plattformen, die OAuth 2.0 verwenden
@@ -22,13 +24,14 @@ const oauthSources = [
 ];
 
 function AddDataSource() {
+  const [selectedSource, setSelectedSource] = useState(null);
+  const [gaReady, setGaReady] = useState(false);
+
   const handleConnect = (source) => {
     const sourcePath = source.name.toLowerCase().replace(/\s+/g, "-");
 
     if (source.name === "Google Ads") {
       window.location.href = "http://localhost:5000/google-ads/login";
-
-      // ✅ Fetch campaigns automatically after login
       setTimeout(() => {
         fetch("http://localhost:5000/google-ads/fetch-campaigns")
           .then((res) => res.json())
@@ -46,8 +49,6 @@ function AddDataSource() {
 
     else if (source.name === "Microsoft Advertising") {
       window.location.href = "http://localhost:5000/microsoft-advertising/login";
-
-      // ✅ Fetch campaigns automatically after login
       setTimeout(() => {
         fetch("http://localhost:5000/microsoft-ads/fetch-campaigns")
           .then((res) => res.json())
@@ -63,8 +64,38 @@ function AddDataSource() {
       }, 5000);
     }
 
+    else if (source.name === "Google Analytics") {
+      window.location.href = "/connect/google-analytics";
+    }
+    
+    
+    else if (source.name === "Facebook Ads" || source.name === "Meta") {
+      window.location.href = "http://localhost:5000/meta/login";
+    
+      // ⏳ Warte ein paar Sekunden, damit der Login-Redirect durchläuft
+      setTimeout(() => {
+        fetch("http://localhost:5000/meta/adaccounts", {
+          credentials: "include"
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            console.log("📊 Meta Ad Accounts:", data);
+            if (data.error) {
+              alert("Meta error: " + data.error);
+            } else {
+              alert("✅ Meta ad accounts fetched!");
+            }
+          })
+          .catch((err) => alert("❌ Error fetching Meta ad accounts: " + err));
+      }, 5000);
+    }
+    
+    
+    
+    
+    
+
     else {
-      // 📩 For non-OAuth platforms (e.g., static API Keys or partner access)
       fetch("http://localhost:5000/add-data-source", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,11 +107,40 @@ function AddDataSource() {
     }
   };
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ready = params.get("meta_ready");
+  
+    if (ready === "true") {
+      fetch("http://localhost:5000/meta/adaccounts", {
+        credentials: "include"
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          console.log("📊 Meta Ad Accounts:", data);
+          if (data.error) {
+            alert("Meta error: " + data.error);
+          } else {
+            alert("✅ Meta ad accounts fetched!");
+          }
+        })
+        .catch((err) => alert("❌ Error fetching Meta ad accounts: " + err));
+  
+      // URL clean halten
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+  
+  
+  
+  
+
   return (
     <div className="page-container">
       <header className="page-header">
         <h1>Connect Data Source</h1>
       </header>
+
       <div className="data-source-grid">
         {dataSources.map((source, index) => (
           <div key={index} className="data-source-card">
@@ -95,6 +155,11 @@ function AddDataSource() {
           </div>
         ))}
       </div>
+
+     
+
+
+
     </div>
   );
 }

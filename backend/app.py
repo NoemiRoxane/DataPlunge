@@ -1,3 +1,5 @@
+import os
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 from flask import Flask, redirect, request, session, jsonify, g, url_for
 import requests
 import os
@@ -5,30 +7,49 @@ from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import DictCursor
 from datetime import datetime
+from flask_session import Session
 from google.ads.googleads.client import GoogleAdsClient
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from dotenv import load_dotenv
+from google.analytics.data_v1beta import BetaAnalyticsDataClient
+from google.analytics.data_v1beta.types import RunReportRequest
+from google.auth.transport.requests import Request as GARequest
+from google.oauth2.credentials import Credentials as GACredentials
+from google_auth_oauthlib.flow import Flow
+from google.analytics.data_v1beta import BetaAnalyticsDataClient
+from google.analytics.admin_v1alpha import AnalyticsAdminServiceClient
+from google.analytics.admin_v1alpha.types import ListPropertiesRequest
+from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Dimension, Metric
+
+
+
 
 
 import time
 import csv
-import os
-
-
 
 app = Flask(__name__)
 load_dotenv()
-app.secret_key = os.getenv("SECRET_KEY")
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
+
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_COOKIE_NAME'] = 'dataplunge-session'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_DOMAIN'] = 'localhost'  # ⬅️ WICHTIG!
 
 
-CORS(app)  # Enable CORS for all routes
+Session(app)
+
+CORS(app, supports_credentials=True, origins=["http://localhost:3000"])
 
 DATABASE_URL = "dbname='dataplunge' user='user' host='localhost' password='admin'"
 
 CLIENT_ID = "187329401613-32vdapcu74mb7i9jojheadpit9mkg0kf.apps.googleusercontent.com"
 CLIENT_SECRET = "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"
 REDIRECT_URI = "http://localhost:5000/google-ads/callback"
+
 
 def get_db():
     if 'db' not in g:
@@ -281,7 +302,7 @@ def fetch_and_store_campaigns():
             metrics = row.metrics
             campaign_date = row.segments.date
 
-            print(f"📊 Campaign: {campaign.name}, Date: {campaign_date}, Impressions: {metrics.impressions}")
+            # print(f"📊 Campaign: {campaign.name}, Date: {campaign_date}, Impressions: {metrics.impressions}")
 
             campaign_data.append({
                 "campaign_id": campaign.id,
@@ -353,6 +374,372 @@ def fetch_and_store_campaigns():
     return jsonify({"message": "Campaign data stored successfully"}), 200
 
 
+def get_ga_client():
+    creds_data = session.get("ga_token")
+    if not creds_data:
+        print("❌ Kein GA-Token in der Session.")
+        return None
+
+    creds = GACredentials(
+        token=creds_data["token"],
+        refresh_token=creds_data["refresh_token"],
+        token_uri=creds_data["token_uri"],
+        client_id=creds_data["client_id"],
+        client_secret=creds_data["client_secret"],
+        scopes=creds_data["scopes"]
+    )
+
+    if creds.expired and creds.refresh_token: REDACTED
+
+    return BetaAnalyticsDataClient(credentials=creds)
+
+@app.route("/ga/fetch-metrics")
+def fetch_ga_data():
+    client = get_ga_client()
+    if not client:
+        return jsonify({"error": "Nicht authentifiziert mit GA4"}), 401
+
+    PROPERTY_ID = request.args.get("property_id")
+    if not PROPERTY_ID:
+        return jsonify({"error": "property_id ist erforderlich"}), 400
+
+
+    request_obj = RunReportRequest(
+        property=f"properties/{PROPERTY_ID}",
+        dimensions=[{"name": "date"}],
+        metrics=[
+            {"name": "sessions"},
+            {"name": "totalUsers"},
+            {"name": "bounceRate"},
+        ],
+        date_ranges=[{"start_date": "30daysAgo", "end_date": "today"}],
+    )
+
+    response = client.run_report(request=request_obj)
+
+    result = []
+    for row in response.rows:
+        result.append({
+            "date": row.dimension_values[0].value,
+            "sessions": row.metric_values[0].value,
+            "users": row.metric_values[1].value,
+            "bounce_rate": row.metric_values[2].value,
+        })
+
+    return jsonify(result)
+
+
+@app.route("/ga/login")
+def ga_login():
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": os.getenv("GA_CLIENT_ID"),
+                "client_secret": os.getenv("GA_CLIENT_SECRET"),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [os.getenv("GA_REDIRECT_URI")],
+            }
+        },
+        scopes=[
+            "https://www.googleapis.com/auth/analytics.readonly",
+            "https://www.googleapis.com/auth/analytics.edit",
+            "https://www.googleapis.com/auth/analytics.manage.users",
+            "https://www.googleapis.com/auth/analytics"
+        ]
+    )
+    flow.redirect_uri = os.getenv("GA_REDIRECT_URI")
+
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent"
+    )
+
+    return redirect(auth_url)
+
+
+@app.route("/ga/properties")
+def get_ga_properties():
+    print("📦 SESSION:", dict(session))  # <--- NEU
+    creds_data = session.get("ga_token")
+    ...
+
+    if not creds_data:
+        return jsonify({"error": "Nicht authentifiziert"}), 401
+
+    creds = GACredentials(
+        token=creds_data["token"],
+        refresh_token=creds_data["refresh_token"],
+        token_uri=creds_data["token_uri"],
+        client_id=creds_data["client_id"],
+        client_secret=creds_data["client_secret"],
+        scopes=creds_data["scopes"]
+    )
+    creds.refresh(GARequest())
+    client = AnalyticsAdminServiceClient(credentials=creds)
+
+    all_properties = []
+    try:
+        accounts = client.list_accounts()
+    except Exception as e:
+        return jsonify({"error": f"Fehler beim Laden der Accounts: {e}"}), 500
+
+    for account in accounts:
+        account_id = account.name.split("/")[-1]
+        try:
+            request = ListPropertiesRequest(filter=f"parent:accounts/{account_id}")
+            props = client.list_properties(request=request)
+            for prop in props:
+                all_properties.append({
+                    "property_id": prop.name.split("/")[-1],
+                    "display_name": prop.display_name,
+                    "time_zone": prop.time_zone
+                })
+        except Exception as e:
+            print(f"⚠️ Fehler beim Laden von Properties für {account.name}: {e}")
+
+    return jsonify(all_properties)
+
+
+@app.route("/ga/callback")
+def ga_callback():
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": os.getenv("GA_CLIENT_ID"),
+                "client_secret": os.getenv("GA_CLIENT_SECRET"),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [os.getenv("GA_REDIRECT_URI")],
+            }
+        },
+        scopes=[
+            "https://www.googleapis.com/auth/analytics.readonly",
+            "https://www.googleapis.com/auth/analytics.edit",
+            "https://www.googleapis.com/auth/analytics.manage.users",
+            "https://www.googleapis.com/auth/analytics"
+        ]
+    )
+    flow.redirect_uri = os.getenv("GA_REDIRECT_URI")
+
+    authorization_response = request.url
+    flow.fetch_token(authorization_response=authorization_response)
+
+    creds = flow.credentials
+
+    # Speichere Tokens temporär in Session
+    session["ga_token"] = {
+        "token": creds.token,
+        "refresh_token": creds.refresh_token,
+        "token_uri": creds.token_uri,
+        "client_id": creds.client_id,
+        "client_secret": creds.client_secret,
+        "scopes": creds.scopes
+    }
+
+    print("✅ GA-Token gespeichert in Session!")
+
+    # 🔁 Nach dem Login zurück zur richtigen React-Seite
+    return redirect("http://localhost:3000/connect/google-analytics?ga_ready=true")
+
+
+
+@app.route("/ga/fetch-campaigns")
+def fetch_ga_campaigns():
+    client = get_ga_client()
+    if not client:
+        return jsonify({"error": "Nicht authentifiziert mit GA4"}), 401
+
+    property_id = request.args.get("property_id")
+    if not property_id:
+        return jsonify({"error": "property_id ist erforderlich"}), 400
+
+    # Run GA4 report grouped by date and campaign name
+    request_obj = RunReportRequest(
+        property=f"properties/{property_id}",
+        dimensions=[Dimension(name="date"), Dimension(name="sessionCampaignName")],
+        metrics=[
+            Metric(name="sessions"),
+            Metric(name="totalUsers"),
+            Metric(name="bounceRate"),
+        ],
+        date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+    )
+
+    try:
+        response = client.run_report(request=request_obj)
+    except Exception as e:
+        return jsonify({"error": f"Fehler beim Abrufen der GA-Daten: {e}"}), 500
+
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            # Finde data_source_id für Google Analytics
+            cursor.execute("SELECT id FROM datasources WHERE source_name = 'Google Analytics' LIMIT 1;")
+            ds_row = cursor.fetchone()
+            if not ds_row:
+                return jsonify({"error": "Google Analytics nicht in der datasources-Tabelle gefunden"}), 500
+            data_source_id = ds_row[0]
+
+            for row in response.rows:
+                campaign_name = row.dimension_values[1].value or "(not set)"
+                campaign_date = row.dimension_values[0].value  # Format: YYYYMMDD
+                formatted_date = datetime.strptime(campaign_date, "%Y%m%d").date()
+
+                sessions = int(row.metric_values[0].value or 0)
+                users = int(row.metric_values[1].value or 0)
+                bounce_rate = float(row.metric_values[2].value or 0)
+
+                # 🔍 Kampagne existiert bereits?
+                cursor.execute("SELECT id FROM campaigns WHERE campaign_name = %s LIMIT 1;", (campaign_name,))
+                existing = cursor.fetchone()
+                if existing:
+                    campaign_id = existing[0]
+                else:
+                    cursor.execute("INSERT INTO campaigns (campaign_name) VALUES (%s) RETURNING id;", (campaign_name,))
+                    campaign_id = cursor.fetchone()[0]
+
+                # 📥 Insert or Update performance metrics
+                cursor.execute("""
+                    INSERT INTO performanceMetrics (
+                        data_source_id, campaign_id, date, sessions
+                    ) VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (data_source_id, campaign_id, date) DO UPDATE
+                    SET sessions = EXCLUDED.sessions;
+                """, (data_source_id, campaign_id, formatted_date, sessions))
+
+    conn.commit()
+    print("✅ Google Analytics Kampagnendaten erfolgreich gespeichert!")
+    return jsonify({"message": "Google Analytics Kampagnendaten gespeichert"}), 200
+
+
+@app.route("/meta/login")
+def meta_login():
+    meta_app_id = os.getenv("META_APP_ID")
+    redirect_uri = os.getenv("META_REDIRECT_URI")
+
+    # Test-Print
+    print("🔍 META_APP_ID:", meta_app_id)
+
+    if not meta_app_id:
+        return "❌ META_APP_ID not set", 500
+
+    oauth_url = (
+        "https://www.facebook.com/v19.0/dialog/oauth"
+        f"?client_id={meta_app_id}"
+        f"&redirect_uri={redirect_uri}"
+        "&scope=ads_read,ads_management"
+        "&response_type=code"
+        "&state=xyz"
+    )
+    return redirect(oauth_url)
+
+
+
+
+@app.route('/meta/callback')
+def meta_callback():
+    code = request.args.get("code")
+    redirect_uri = "http://localhost:5000/meta/callback"
+
+    token_url = "https://graph.facebook.com/v19.0/oauth/access_token"
+    params = {
+        "client_id": os.getenv("META_APP_ID"),
+        "client_secret": os.getenv("META_APP_SECRET"),
+        "redirect_uri": redirect_uri,
+        "code": code
+    }
+
+    response = requests.get(token_url, params=params)
+    token_info = response.json()
+
+    if "access_token" not in token_info:
+        return jsonify({"error": "Token konnte nicht abgerufen werden", "details": token_info}), 400
+
+    session["meta_token"] = token_info["access_token"]
+    return redirect("http://localhost:3000/add-data-source?meta_ready=true")
+
+
+
+@app.route('/meta/adaccounts')
+def meta_adaccounts():
+    access_token = session.get("meta_token")
+    if not access_token:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+
+    res = requests.get(
+        f"https://graph.facebook.com/v19.0/me/adaccounts",
+        params={"access_token": access_token}
+    )
+    
+    print("📡 Meta API response:", res.json())  # 👉 Wichtig!
+    return jsonify(res.json())
+
+
+
+"""@app.route("/ga/fetch-campaigns")
+def fetch_ga_campaigns():
+    client = get_ga_client()
+    if not client:
+        return jsonify({"error": "Nicht authentifiziert mit GA4"}), 401
+
+    property_id = request.args.get("property_id")
+    if not property_id:
+        return jsonify({"error": "property_id ist erforderlich"}), 400
+
+    # Run GA4 report grouped by date and campaign name
+    request_obj = RunReportRequest(
+        property=f"properties/{property_id}",
+        dimensions=[Dimension(name="date"), Dimension(name="sessionCampaignName")],
+        metrics=[
+            Metric(name="sessions"),
+            Metric(name="totalUsers"),
+            Metric(name="bounceRate"),
+        ],
+        date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+    )
+
+    try:
+        response = client.run_report(request=request_obj)
+    except Exception as e:
+        return jsonify({"error": f"Fehler beim Abrufen der GA-Daten: {e}"}), 500
+
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            # Finde data_source_id für Google Analytics
+            cursor.execute("SELECT id FROM datasources WHERE source_name = 'Google Analytics' LIMIT 1;")
+            ds_row = cursor.fetchone()
+            if not ds_row:
+                return jsonify({"error": "Google Analytics nicht in der datasources-Tabelle gefunden"}), 500
+            data_source_id = ds_row[0]
+
+            for row in response.rows:
+                campaign_name = row.dimension_values[1].value or "(not set)"
+                campaign_date = row.dimension_values[0].value  # Format: YYYYMMDD
+                formatted_date = datetime.strptime(campaign_date, "%Y%m%d").date()
+
+                sessions = int(row.metric_values[0].value or 0)
+                users = int(row.metric_values[1].value or 0)
+                bounce_rate = float(row.metric_values[2].value or 0)
+
+                # 🔍 Kampagne existiert bereits?
+                cursor.execute("SELECT id FROM campaigns WHERE campaign_name = %s LIMIT 1;", (campaign_name,))
+                existing = cursor.fetchone()
+                if existing:
+                    campaign_id = existing[0]
+                else:
+                    cursor.execute("INSERT INTO campaigns (campaign_name) VALUES (%s) RETURNING id;", (campaign_name,))
+                    campaign_id = cursor.fetchone()[0]
+
+                # 📥 Insert or Update performance metrics
+                
+
+    conn.commit()
+    print("✅ Google Analytics Kampagnendaten erfolgreich gespeichert!")
+    return jsonify({"message": "Google Analytics Kampagnendaten gespeichert"}), 200 """
+
+
+
 @app.route('/filter-performance', methods=['GET'])
 def filter_performance():
     time_range = request.args.get('range')
@@ -385,7 +772,7 @@ def filter_performance():
 
             rows = cursor.fetchall()
 
-    print(f"Rows fetched for {value}: {rows}")
+    # print(f"Rows fetched for {value}: {rows}")
 
     if not rows:
         print("No data found for the given range.")
@@ -405,7 +792,7 @@ def filter_performance():
         }
         for row in rows
     ]
-    print(f"Filtered data returned: {filtered_data}")
+    # print(f"Filtered data returned: {filtered_data}")
     return jsonify(filtered_data)
 
 

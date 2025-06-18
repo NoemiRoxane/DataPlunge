@@ -74,7 +74,7 @@ useEffect(() => {
         return response.json();
       })
       .then((data) => {
-        console.log('Data received from backend:', data);
+       // console.log('Data received from backend:', data);
         if (data.length === 0) {
           throw new Error('No data found for the selected range.');
         }
