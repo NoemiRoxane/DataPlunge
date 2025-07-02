@@ -21,6 +21,8 @@ from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.admin_v1alpha import AnalyticsAdminServiceClient
 from google.analytics.admin_v1alpha.types import ListPropertiesRequest
 from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Dimension, Metric
+from urllib.parse import urlencode
+
 
 
 
@@ -674,6 +676,182 @@ def meta_adaccounts():
     
     print("📡 Meta API response:", res.json())  # 👉 Wichtig!
     return jsonify(res.json())
+
+@app.route('/meta/fetch-performance')
+def fetch_and_store_meta_performance():
+    access_token = session.get("meta_token")
+    if not access_token:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            # Hole die data_source_id für Meta
+            cursor.execute("SELECT id FROM datasources WHERE source_name = 'Meta' LIMIT 1;")
+            ds_row = cursor.fetchone()
+            if not ds_row:
+                return jsonify({"error": "Meta nicht in der datasources-Tabelle gefunden"}), 500
+            data_source_id = ds_row[0]
+
+            # Hole alle gespeicherten Meta-Kampagnen
+            cursor.execute("SELECT id, campaign_name FROM campaigns;")
+            campaigns = cursor.fetchall()
+            if not campaigns:
+                return jsonify({"error": "Keine Kampagnen gefunden"}), 404
+
+            inserted_rows = []
+
+            for campaign in campaigns:
+                campaign_id, campaign_name = campaign
+
+                url = f"https://graph.facebook.com/v19.0/{campaign_id}/insights"
+                params = {
+                    "fields": "date_start,date_stop,spend,impressions,clicks,actions",
+                    "date_preset": "last_30d",
+                    "access_token": access_token
+                }
+                response = requests.get(url, params=params)
+                insights = response.json()
+
+                # Prüfe ob Insights vorhanden oder Fehler
+                if "data" not in insights or not insights["data"]:
+                    if "error" in insights:
+                        error = insights["error"]
+                        # Häufige Fehler: gelöschte, archivierte oder nicht zugängliche Kampagnen
+                        if error["code"] in [12, 100]:
+                            print(f"ℹ️ Kampagne {campaign_id} übersprungen: {error['message']}")
+                            continue
+                        else:
+                            print(f"❌ Unerwarteter Fehler bei Kampagne {campaign_id}: {error}")
+                            continue
+                    else:
+                        print(f"⚠️ Keine Insights für Kampagne {campaign_id}: {insights}")
+                    continue
+
+                for row in insights["data"]:
+                    date = row["date_start"]
+                    costs = float(row.get("spend", 0))
+                    impressions = int(row.get("impressions", 0))
+                    clicks = int(row.get("clicks", 0))
+
+                    # Conversions aus actions extrahieren
+                    conversions = 0
+                    actions = row.get("actions", [])
+                    for action in actions:
+                        if action["action_type"].startswith("offsite_conversion"):
+                            conversions += int(action["value"])
+
+                    cost_per_click = costs / clicks if clicks > 0 else 0
+                    cost_per_conversion = costs / conversions if conversions > 0 else 0
+
+                    # Speichern oder aktualisieren in performanceMetrics
+                    cursor.execute("""
+                        INSERT INTO performanceMetrics (
+                            data_source_id, campaign_id, date, costs, impressions, clicks, cost_per_click, conversions, cost_per_conversion
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (data_source_id, campaign_id, date) DO UPDATE
+                        SET costs = EXCLUDED.costs,
+                            impressions = EXCLUDED.impressions,
+                            clicks = EXCLUDED.clicks,
+                            cost_per_click = EXCLUDED.cost_per_click,
+                            conversions = EXCLUDED.conversions,
+                            cost_per_conversion = EXCLUDED.cost_per_conversion;
+                    """, (
+                        data_source_id, campaign_id, date, costs, impressions, clicks,
+                        cost_per_click, conversions, cost_per_conversion
+                    ))
+
+                    inserted_rows.append({
+                        "campaign_name": campaign_name,
+                        "date": date,
+                        "costs": costs,
+                        "impressions": impressions,
+                        "clicks": clicks,
+                        "conversions": conversions
+                    })
+
+            conn.commit()
+
+    print(f"✅ Meta-Performance gespeichert: {len(inserted_rows)} Einträge")
+    return jsonify({
+        "message": f"{len(inserted_rows)} Performance-Datensätze gespeichert",
+        "data": inserted_rows
+    })
+
+@app.route('/meta/fetch-campaigns')
+def fetch_and_store_meta_campaigns():
+    access_token = session.get("meta_token")
+    if not access_token:
+        return jsonify({"error": "Nicht eingeloggt"}), 401
+
+    adaccounts_res = requests.get(
+        f"https://graph.facebook.com/v19.0/me/adaccounts",
+        params={"access_token": access_token}
+    ).json()
+
+    if "data" not in adaccounts_res:
+        return jsonify({"error": "Keine Ad Accounts gefunden", "details": adaccounts_res}), 400
+
+    campaigns_inserted = []
+
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id FROM datasources WHERE source_name = 'Meta' LIMIT 1;")
+            ds_row = cursor.fetchone()
+            if not ds_row:
+                return jsonify({"error": "Meta nicht in der datasources-Tabelle gefunden"}), 500
+            data_source_id = ds_row[0]
+
+            for adaccount in adaccounts_res["data"]:
+                adaccount_id = adaccount["id"]
+
+                campaigns = fetch_meta_campaigns(adaccount_id, access_token)
+                if "data" not in campaigns:
+                    print(f"⚠️ Keine Kampagnen für Account {adaccount_id}: {campaigns}")
+                    continue
+
+                for campaign in campaigns["data"]:
+                    campaign_id = int(campaign["id"])
+                    campaign_name = campaign["name"]
+
+                    cursor.execute("SELECT id FROM campaigns WHERE id = %s LIMIT 1;", (campaign_id,))
+                    existing = cursor.fetchone()
+                    if existing:
+                        cursor.execute(
+                            "UPDATE campaigns SET campaign_name = %s WHERE id = %s;",
+                            (campaign_name, campaign_id)
+                        )
+                    else:
+                        cursor.execute(
+                            "INSERT INTO campaigns (id, campaign_name) VALUES (%s, %s);",
+                            (campaign_id, campaign_name)
+                        )
+
+                    campaigns_inserted.append(campaign_name)
+
+            conn.commit()
+
+    print(f"✅ Meta-Kampagnen gespeichert: {campaigns_inserted}")
+    return jsonify({"message": f"{len(campaigns_inserted)} Kampagnen gespeichert", "campaigns": campaigns_inserted})
+
+
+def fetch_meta_campaigns(ad_account_id, access_token):
+    url = f"https://graph.facebook.com/v19.0/{ad_account_id}/campaigns"
+
+    params = [
+        ("fields", "id,name,status,created_time"),
+        ("effective_status", "ACTIVE"),
+        ("effective_status", "PAUSED"),
+        ("access_token", access_token),
+    ]
+
+    # Debug: manuell encodierten Request-URL ausgeben
+    request_url = f"{url}?{urlencode(params)}"
+    print(f"📤 Manually encoded request: {request_url}")
+
+    response = requests.get(request_url)
+    data = response.json()
+    print(f"📦 Kampagnen für {ad_account_id}:", data)
+    return data
 
 
 
