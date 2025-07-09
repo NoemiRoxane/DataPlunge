@@ -2,11 +2,12 @@ import os
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 from flask import Flask, redirect, request, session, jsonify, g, url_for
 import requests
+import json
 import os
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import DictCursor
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_session import Session
 from google.ads.googleads.client import GoogleAdsClient
 from google.auth.transport.requests import Request
@@ -620,11 +621,8 @@ def meta_login():
     meta_app_id = os.getenv("META_APP_ID")
     redirect_uri = os.getenv("META_REDIRECT_URI")
 
-    # Test-Print
-    print("🔍 META_APP_ID:", meta_app_id)
-
-    if not meta_app_id:
-        return "❌ META_APP_ID not set", 500
+    if not meta_app_id or not redirect_uri:
+        return "❌ META_APP_ID oder META_REDIRECT_URI nicht gesetzt", 500
 
     oauth_url = (
         "https://www.facebook.com/v19.0/dialog/oauth"
@@ -638,11 +636,10 @@ def meta_login():
 
 
 
-
 @app.route('/meta/callback')
 def meta_callback():
     code = request.args.get("code")
-    redirect_uri = "http://localhost:5000/meta/callback"
+    redirect_uri = os.getenv("META_REDIRECT_URI")  # sichergehen, dass es gesetzt ist!
 
     token_url = "https://graph.facebook.com/v19.0/oauth/access_token"
     params = {
@@ -659,8 +656,10 @@ def meta_callback():
         return jsonify({"error": "Token konnte nicht abgerufen werden", "details": token_info}), 400
 
     session["meta_token"] = token_info["access_token"]
-    return redirect("http://localhost:3000/add-data-source?meta_ready=true")
+    print("✅ Meta Access Token gespeichert in Session!")
 
+    # ➔ redirect zur Wizard-Seite (analog GA)
+    return redirect("http://localhost:3000/connect/meta?meta_ready=true")
 
 
 @app.route('/meta/adaccounts')
@@ -670,188 +669,173 @@ def meta_adaccounts():
         return jsonify({"error": "Nicht eingeloggt"}), 401
 
     res = requests.get(
-        f"https://graph.facebook.com/v19.0/me/adaccounts",
-        params={"access_token": access_token}
+        "https://graph.facebook.com/v19.0/me/adaccounts",
+        params={"access_token": access_token, "fields": "id,name,account_status"}
     )
     
-    print("📡 Meta API response:", res.json())  # 👉 Wichtig!
-    return jsonify(res.json())
+    accounts_data = res.json()
+    if "data" not in accounts_data:
+        print("❌ Fehler beim Laden der Ad Accounts:", accounts_data)
+        return jsonify({"error": "Accounts konnten nicht geladen werden", "details": accounts_data}), 500
 
-@app.route('/meta/fetch-performance')
-def fetch_and_store_meta_performance():
+    print("📡 Meta Accounts geladen:", accounts_data["data"])
+    return jsonify(accounts_data["data"])
+
+@app.route('/meta/select-account', methods=["POST"])
+def select_meta_account():
+    data = request.get_json()
+    account_id = data.get("account_id")
+
+    if not account_id:
+        return jsonify({"error": "account_id fehlt"}), 400
+
+    session["meta_account_id"] = account_id
+    print(f"✅ Meta Account {account_id} gespeichert in Session")
+
     access_token = session.get("meta_token")
     if not access_token:
+        print("⚠️ Kein Meta Access Token in Session")
+        return jsonify({"error": "Kein Access Token"}), 401
+
+    # 🎯 Speichern nach Auswahl
+    fetch_and_store_meta_campaigns()
+
+    return jsonify({"message": f"Meta Account {account_id} gespeichert & Daten geladen"}), 200
+
+
+
+@app.route('/meta/fetch-campaigns')
+def fetch_and_store_meta_campaigns():
+    access_token = session.get("meta_token")
+    account_id = session.get("meta_account_id")
+    if not access_token:
         return jsonify({"error": "Nicht eingeloggt"}), 401
+    if not account_id:
+        return jsonify({"error": "Kein Meta-Account ausgewählt"}), 400
+
+    # Kampagnen abrufen
+    url = f"https://graph.facebook.com/v19.0/{account_id}/campaigns"
+    params = {
+    "fields": "id,name,status",
+    "effective_status": '["ACTIVE","PAUSED"]',
+    "access_token": access_token
+    }
+
+    response = requests.get(url, params=params)
+    campaigns_data = response.json()
+
+    if "data" not in campaigns_data or not campaigns_data["data"]:
+        print(f"⚠️ Keine Kampagnen gefunden oder Fehler: {campaigns_data}")
+        return jsonify({"error": "Keine Kampagnen gefunden", "details": campaigns_data}), 404
+
+    campaigns = campaigns_data["data"]
+    inserted_rows = []
 
     with get_db() as conn:
         with conn.cursor() as cursor:
-            # Hole die data_source_id für Meta
+            # Hole data_source_id für Meta
             cursor.execute("SELECT id FROM datasources WHERE source_name = 'Meta' LIMIT 1;")
             ds_row = cursor.fetchone()
             if not ds_row:
-                return jsonify({"error": "Meta nicht in der datasources-Tabelle gefunden"}), 500
+                return jsonify({"error": "Meta nicht in datasources gefunden"}), 500
             data_source_id = ds_row[0]
 
-            # Hole alle gespeicherten Meta-Kampagnen
-            cursor.execute("SELECT id, campaign_name FROM campaigns;")
-            campaigns = cursor.fetchall()
-            if not campaigns:
-                return jsonify({"error": "Keine Kampagnen gefunden"}), 404
-
-            inserted_rows = []
+            end_date = datetime.utcnow().date()
+            start_date = end_date - timedelta(days=30)
 
             for campaign in campaigns:
-                campaign_id, campaign_name = campaign
+                campaign_id = int(campaign["id"])
+                campaign_name = campaign["name"]
 
-                url = f"https://graph.facebook.com/v19.0/{campaign_id}/insights"
-                params = {
-                    "fields": "date_start,date_stop,spend,impressions,clicks,actions",
-                    "date_preset": "last_30d",
+                print(f"📌 Verarbeite Kampagne {campaign_id}: {campaign_name}")
+
+                # Kampagne speichern oder aktualisieren
+                cursor.execute("SELECT id FROM campaigns WHERE id = %s LIMIT 1;", (campaign_id,))
+                existing = cursor.fetchone()
+                if not existing:
+                    cursor.execute("INSERT INTO campaigns (id, campaign_name) VALUES (%s, %s) RETURNING id;",
+                                   (campaign_id, campaign_name))
+                    campaign_db_id = cursor.fetchone()[0]
+                else:
+                    campaign_db_id = existing[0]
+
+                # Insights abrufen
+                insights_url = f"https://graph.facebook.com/v19.0/{campaign_id}/insights"
+                insights_params = {
+                    "fields": "date_start,spend,impressions,clicks,actions",
+                    "time_range": json.dumps({
+                        "since": start_date.strftime("%Y-%m-%d"),
+                        "until": end_date.strftime("%Y-%m-%d")
+                    }),
+                    "time_increment": "1",
                     "access_token": access_token
                 }
-                response = requests.get(url, params=params)
-                insights = response.json()
-
-                # Prüfe ob Insights vorhanden oder Fehler
-                if "data" not in insights or not insights["data"]:
-                    if "error" in insights:
-                        error = insights["error"]
-                        # Häufige Fehler: gelöschte, archivierte oder nicht zugängliche Kampagnen
-                        if error["code"] in [12, 100]:
-                            print(f"ℹ️ Kampagne {campaign_id} übersprungen: {error['message']}")
-                            continue
-                        else:
-                            print(f"❌ Unerwarteter Fehler bei Kampagne {campaign_id}: {error}")
-                            continue
+                insights_res = requests.get(insights_url, params=insights_params)
+                insights = insights_res.json()
+                print(f"📊 Actions für Kampagne {campaign_id}:")
+                for row in insights.get("data", []):
+                    actions = row.get("actions", [])
+                    if actions:
+                        print(json.dumps(actions, indent=2))
                     else:
-                        print(f"⚠️ Keine Insights für Kampagne {campaign_id}: {insights}")
+                        print("Keine actions vorhanden.")
+
+
+                if "data" not in insights or not insights["data"]:
+                    print(f"⚠️ Keine Insights für Kampagne {campaign_id}: {insights}")
                     continue
 
+               # Performance-Daten speichern
                 for row in insights["data"]:
                     date = row["date_start"]
                     costs = float(row.get("spend", 0))
                     impressions = int(row.get("impressions", 0))
                     clicks = int(row.get("clicks", 0))
-
-                    # Conversions aus actions extrahieren
-                    conversions = 0
                     actions = row.get("actions", [])
-                    for action in actions:
-                        if action["action_type"].startswith("offsite_conversion"):
-                            conversions += int(action["value"])
+
+                    conversion_types = ["lead", "onsite_conversion.lead_grouped"]
+                    conversions = sum(int(a["value"]) for a in actions if a["action_type"] in conversion_types)
+                    sessions = sum(int(a["value"]) for a in actions if a["action_type"] == "link_click")
 
                     cost_per_click = costs / clicks if clicks > 0 else 0
                     cost_per_conversion = costs / conversions if conversions > 0 else 0
 
-                    # Speichern oder aktualisieren in performanceMetrics
                     cursor.execute("""
                         INSERT INTO performanceMetrics (
-                            data_source_id, campaign_id, date, costs, impressions, clicks, cost_per_click, conversions, cost_per_conversion
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            data_source_id, campaign_id, date, costs, impressions, clicks, cost_per_click,
+                            conversions, cost_per_conversion, sessions
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (data_source_id, campaign_id, date) DO UPDATE
                         SET costs = EXCLUDED.costs,
                             impressions = EXCLUDED.impressions,
                             clicks = EXCLUDED.clicks,
                             cost_per_click = EXCLUDED.cost_per_click,
                             conversions = EXCLUDED.conversions,
-                            cost_per_conversion = EXCLUDED.cost_per_conversion;
+                            cost_per_conversion = EXCLUDED.cost_per_conversion,
+                            sessions = EXCLUDED.sessions;
                     """, (
-                        data_source_id, campaign_id, date, costs, impressions, clicks,
-                        cost_per_click, conversions, cost_per_conversion
+                        data_source_id, campaign_db_id, date, costs, impressions, clicks,
+                        cost_per_click, conversions, cost_per_conversion, sessions
                     ))
 
-                    inserted_rows.append({
-                        "campaign_name": campaign_name,
-                        "date": date,
-                        "costs": costs,
-                        "impressions": impressions,
-                        "clicks": clicks,
-                        "conversions": conversions
-                    })
+
+                inserted_rows.append({"campaign_id": campaign_db_id, "campaign_name": campaign_name})
 
             conn.commit()
 
-    print(f"✅ Meta-Performance gespeichert: {len(inserted_rows)} Einträge")
-    return jsonify({
-        "message": f"{len(inserted_rows)} Performance-Datensätze gespeichert",
-        "data": inserted_rows
-    })
-
-@app.route('/meta/fetch-campaigns')
-def fetch_and_store_meta_campaigns():
-    access_token = session.get("meta_token")
-    if not access_token:
-        return jsonify({"error": "Nicht eingeloggt"}), 401
-
-    adaccounts_res = requests.get(
-        f"https://graph.facebook.com/v19.0/me/adaccounts",
-        params={"access_token": access_token}
-    ).json()
-
-    if "data" not in adaccounts_res:
-        return jsonify({"error": "Keine Ad Accounts gefunden", "details": adaccounts_res}), 400
-
-    campaigns_inserted = []
-
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT id FROM datasources WHERE source_name = 'Meta' LIMIT 1;")
-            ds_row = cursor.fetchone()
-            if not ds_row:
-                return jsonify({"error": "Meta nicht in der datasources-Tabelle gefunden"}), 500
-            data_source_id = ds_row[0]
-
-            for adaccount in adaccounts_res["data"]:
-                adaccount_id = adaccount["id"]
-
-                campaigns = fetch_meta_campaigns(adaccount_id, access_token)
-                if "data" not in campaigns:
-                    print(f"⚠️ Keine Kampagnen für Account {adaccount_id}: {campaigns}")
-                    continue
-
-                for campaign in campaigns["data"]:
-                    campaign_id = int(campaign["id"])
-                    campaign_name = campaign["name"]
-
-                    cursor.execute("SELECT id FROM campaigns WHERE id = %s LIMIT 1;", (campaign_id,))
-                    existing = cursor.fetchone()
-                    if existing:
-                        cursor.execute(
-                            "UPDATE campaigns SET campaign_name = %s WHERE id = %s;",
-                            (campaign_name, campaign_id)
-                        )
-                    else:
-                        cursor.execute(
-                            "INSERT INTO campaigns (id, campaign_name) VALUES (%s, %s);",
-                            (campaign_id, campaign_name)
-                        )
-
-                    campaigns_inserted.append(campaign_name)
-
-            conn.commit()
-
-    print(f"✅ Meta-Kampagnen gespeichert: {campaigns_inserted}")
-    return jsonify({"message": f"{len(campaigns_inserted)} Kampagnen gespeichert", "campaigns": campaigns_inserted})
+    print(f"✅ Meta-Kampagnen & Performance gespeichert: {len(inserted_rows)}")
+    return jsonify({"message": f"{len(inserted_rows)} Kampagnen gespeichert", "data": inserted_rows}), 200
 
 
-def fetch_meta_campaigns(ad_account_id, access_token):
-    url = f"https://graph.facebook.com/v19.0/{ad_account_id}/campaigns"
+@app.route('/meta/save-account')
+def save_meta_account():
+    account_id = request.args.get("account_id")
+    if not account_id:
+        return jsonify({"error": "account_id ist erforderlich"}), 400
 
-    params = [
-        ("fields", "id,name,status,created_time"),
-        ("effective_status", "ACTIVE"),
-        ("effective_status", "PAUSED"),
-        ("access_token", access_token),
-    ]
-
-    # Debug: manuell encodierten Request-URL ausgeben
-    request_url = f"{url}?{urlencode(params)}"
-    print(f"📤 Manually encoded request: {request_url}")
-
-    response = requests.get(request_url)
-    data = response.json()
-    print(f"📦 Kampagnen für {ad_account_id}:", data)
-    return data
+    session["meta_account_id"] = account_id
+    print(f"✅ Meta Account ID {account_id} gespeichert in Session!")
+    return jsonify({"message": f"Account {account_id} gespeichert"})
 
 
 
