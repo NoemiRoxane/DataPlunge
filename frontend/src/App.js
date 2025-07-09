@@ -6,6 +6,7 @@ import ByChannels from './pages/ByChannels';
 import ByCampaigns from './pages/ByCampaigns';
 import AddDataSource from './pages/AddDataSource';
 import GAConnectionPage from './pages/GAConnectionPage'; // ✅ neue GA-Onboarding-Seite
+import MetaConnectionPage from './pages/MetaConnectionPage';
 import './styles.css';
 
 function App() {
@@ -66,6 +67,7 @@ function App() {
                 
                 {/* ✅ Neue dedizierte Seite für GA-Onboarding */}
                 <Route path="/connect/google-analytics" element={<GAConnectionPage />} />
+                <Route path="/connect/meta" element={<MetaConnectionPage />} />
               </Routes>
             </main>
           </div>

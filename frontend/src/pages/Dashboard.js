@@ -130,6 +130,7 @@ useEffect(() => {
           impressions: parseInt(item.impressions, 10) || 0,
           clicks: parseInt(item.clicks, 10) || 0,
           sessions: parseInt(item.sessions, 10) || 0,
+          source: item.source || 'Unknown',
         });
       }
       return acc;

@@ -70,7 +70,8 @@ function AddDataSource() {
     
     
     else if (source.name === "Facebook Ads" || source.name === "Meta") {
-      window.location.href = "http://localhost:5000/meta/login";
+      window.location.href = "http://localhost:3000/connect/meta"; // ⬅️ nicht /meta/login, sondern deine Wizard-Seite
+     
     
       // ⏳ Warte ein paar Sekunden, damit der Login-Redirect durchläuft
       setTimeout(() => {
@@ -112,24 +113,39 @@ function AddDataSource() {
     const ready = params.get("meta_ready");
   
     if (ready === "true") {
-      fetch("http://localhost:5000/meta/adaccounts", {
-        credentials: "include"
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          console.log("📊 Meta Ad Accounts:", data);
-          if (data.error) {
-            alert("Meta error: " + data.error);
-          } else {
-            alert("✅ Meta ad accounts fetched!");
-          }
-        })
-        .catch((err) => alert("❌ Error fetching Meta ad accounts: " + err));
+      console.log("✅ Meta connection confirmed, starting data fetch...");
   
-      // URL clean halten
+      fetch("http://localhost:5000/meta/fetch-campaigns", {
+        credentials: "include",
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error("Kampagnen-Request fehlgeschlagen");
+          return res.json();
+        })
+        .then((data) => {
+          console.log("📊 Meta Campaigns fetched:", data);
+          return fetch("http://localhost:5000/meta/fetch-performance", {
+            credentials: "include",
+          });
+        })
+        .then((res) => {
+          if (!res.ok) throw new Error("Performance-Request fehlgeschlagen");
+          return res.json();
+        })
+        .then((data) => {
+          console.log("✅ Meta Performance fetched:", data);
+          alert("Meta-Kampagnen und Performance-Daten wurden erfolgreich gespeichert!");
+        })
+        .catch((err) => {
+          console.error(err);
+          alert("❌ Fehler beim Abrufen der Meta-Daten: " + err.message);
+        });
+  
+      // URL aufräumen, damit ?meta_ready=true verschwindet
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
+  
   
   
   
