@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { jwtDecode } from "jwt-decode";
-import GAConnector from "../components/GAConnector";
+import GAConnector from "../../components/Connectors/GAConnector";
 
 
 

@@ -56,7 +56,7 @@ function Insights({ startDate, endDate }) {
       <div className="insights-header">
         <h3>Insights – Supported by AI</h3>
         <img
-          src={require('./AI_stars.png')}
+          src="/pictures/AI_stars.png"
           alt="AI Icon"
           className="icon"
           width="48"

@@ -1,13 +1,14 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
-import { DateProvider } from './context/DateContext';
-import Dashboard from './pages/Dashboard';
-import ByChannels from './pages/ByChannels';
-import ByCampaigns from './pages/ByCampaigns';
-import AddDataSource from './pages/AddDataSource';
-import GAConnectionPage from './pages/GAConnectionPage'; // ✅ neue GA-Onboarding-Seite
-import MetaConnectionPage from './pages/MetaConnectionPage';
-import './styles.css';
+import { DateProvider } from '../context/DateContext';
+import Dashboard from "../pages/Dashboard/Dashboard";
+import ByChannels from "../pages/ByChannels/ByChannels";
+import ByCampaigns from "../pages/ByCampaigns/ByCampaigns";
+import AddDataSource from "../pages/AddDataSource/AddDataSource";
+import GAConnectionPage from "../pages/Connect/GAConnectionPage";
+import MetaConnectionPage from "../pages/Connect/MetaConnectionPage";
+//import "../styles/styles.css";
+
 
 function App() {
   return (

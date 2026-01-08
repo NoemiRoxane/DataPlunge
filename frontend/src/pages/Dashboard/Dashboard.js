@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import PerformanceChart from '../components/PerformanceChart';
-import Insights from '../components/Insights';
+import Insights from "../../components/Insights/Insights";
+import PerformanceChart from "../../components/Performance/PerformanceChart";
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './dashboard.css';
-import { useDate } from '../context/DateContext'; // Verwende den DateContext
+import { useDate } from '../../context/DateContext'; // Verwende den DateContext
 
 
 function Dashboard() {

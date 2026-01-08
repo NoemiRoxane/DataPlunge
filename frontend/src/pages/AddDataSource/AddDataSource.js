@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './AddDataSource.css';
-import GASelector from "../components/GASelector";
-import GAConnector from "../components/GAConnector";
+import GASelector from "../../components/Connectors/GASelector";
+import GAConnector from "../../components/Connectors/GAConnector";
 
 
 const dataSources = [

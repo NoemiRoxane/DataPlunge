@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import MetaConnector from "../components/MetaConnector";
+import MetaConnector from "../../components/Connectors/MetaConnector";
 
 function MetaConnectionPage() {
   const [metaReady, setMetaReady] = useState(false);
