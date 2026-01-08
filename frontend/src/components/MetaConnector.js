@@ -51,7 +51,11 @@ function MetaConnector({ metaReady }) {
   return (
     <div className="ga-wizard">
       <h1 style={{ fontFamily: "Inter", fontSize: "28px", fontWeight: 600, color: "#0f2746" }}>
-        <img src="https://static.xx.fbcdn.net/rsrc.php/v3/yl/r/ytFwz9W9-s6.png" alt="Meta" style={{ width: "32px", marginRight: "10px", verticalAlign: "middle" }} />
+      <img
+        src="/meta_logo.png"
+        alt="Meta"
+        style={{ width: "32px", marginRight: "10px", verticalAlign: "middle" }}
+        />
         Connect Meta (Facebook Ads)
       </h1>
 
@@ -64,7 +68,11 @@ function MetaConnector({ metaReady }) {
             <div className="credential-card">
               <h3>Add Meta Credentials</h3>
               <button onClick={handleLogin} className="google-button">
-                <img src="https://static.xx.fbcdn.net/rsrc.php/v3/yl/r/ytFwz9W9-s6.png" alt="FB" />
+              <img
+                src="/fb_logo.jpg"
+                alt="FB"
+                style={{ width: "28px", marginRight: "10px", verticalAlign: "middle" }}
+        />
                 Continue with Facebook
               </button>
             </div>
