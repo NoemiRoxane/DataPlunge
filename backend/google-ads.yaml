@@ -23,9 +23,10 @@ use_proto_plus: True
 # OAuth2 flow. For more information on authenticating with OAuth2 see:                   #
 # https://developers.google.com/google-ads/api/docs/oauth/overview                       #
 ##########################################################################################
-client_id: 187329401613-32vdapcu74mb7i9jojheadpit9mkg0kf.apps.googleusercontent.com
+client_id: ${GOOGLE_ADS_CLIENT_ID}
 client_secret: REDACTED
 refresh_token: REDACTED
+##########################################################################################
 # To authenticate with a service account add the appropriate values to the below         #
 # configuration parameters and remove the three OAuth2 credentials above. The            #
 # "json_key_file_path" value should be a path to your local private key json file, and   #
@@ -46,7 +47,7 @@ refresh_token: REDACTED
 # also specify this later in code if your application uses multiple manager account +    #
 # OAuth pairs.                                                                           #
 ##########################################################################################
-login_customer_id: 4008564417
+login_customer_id: ${GOOGLE_ADS_LOGIN_CUSTOMER_ID}
 
 # Logging configuration
 ##########################################################################################
