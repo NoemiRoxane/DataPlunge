@@ -40,7 +40,7 @@ app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_COOKIE_NAME'] = 'dataplunge-session'
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = False
-app.config['SESSION_COOKIE_DOMAIN'] = 'localhost'  # ⬅️ WICHTIG!
+app.config['SESSION_COOKIE_DOMAIN'] = 'localhost'  
 
 
 Session(app)
@@ -793,8 +793,7 @@ def fetch_and_store_meta_campaigns():
                     clicks = int(row.get("clicks", 0))
                     actions = row.get("actions", [])
 
-                    conversion_types = ["lead", "onsite_conversion.lead_grouped"]
-                    conversions = sum(int(a["value"]) for a in actions if a["action_type"] in conversion_types)
+                    conversions = sum(int(a["value"]) for a in actions if a["action_type"] == "onsite_conversion.lead_grouped")
                     sessions = sum(int(a["value"]) for a in actions if a["action_type"] == "link_click")
 
                     cost_per_click = costs / clicks if clicks > 0 else 0
