@@ -176,20 +176,42 @@ def refresh_access_token(customer_id: str) -> str | None:
     return None
 
 
-def get_customer_ids_from_api(access_token: str) -> list[str] | None:
-    """Fetch accessible Google Ads customer IDs for the current user."""
-    url = "https://googleads.googleapis.com/v12/customers:listAccessibleCustomers"
-    headers = {"Authorization": f"Bearer {access_token}"}
+def get_customer_ids_from_api(access_token: str) -> list[str]:
+    url = "https://googleads.googleapis.com/v22/customers:listAccessibleCustomers"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN,  # <-- important
+        "Accept": "application/json",
+    }
 
     response = requests.get(url, headers=headers, timeout=30)
+
+    # If not 2xx, print useful diagnostics
+    if not response.ok:
+        content_type = response.headers.get("Content-Type", "")
+        print("Google Ads API ERROR")
+        print("Status:", response.status_code)
+        print("Content-Type:", content_type)
+        print("Body:", response.text[:2000])  # limit
+        response.raise_for_status()
+
+    # Even if 2xx, still ensure it's JSON
+    content_type = response.headers.get("Content-Type", "")
+    if "application/json" not in content_type.lower():
+        print("Unexpected non-JSON response")
+        print("Status:", response.status_code)
+        print("Content-Type:", content_type)
+        print("Body:", response.text[:2000])
+        raise ValueError("Expected JSON but got non-JSON response from Google Ads API")
+
     data = response.json()
 
-    if "resourceNames" in data:
-        return [name.split("/")[-1] for name in data["resourceNames"]]
+    # Parse resource names like: "customers/1234567890"
+    resource_names = data.get("resourceNames", [])
+    customer_ids = [rn.split("/")[1] for rn in resource_names if rn.startswith("customers/")]
 
-    print(f"❌ Failed to fetch customer IDs: {data}")
-    return None
-
+    return customer_ids
 
 def get_customer_id_from_db() -> str | None:
     """Get one stored customer_id from DB (simple fallback)."""
@@ -274,7 +296,23 @@ def google_ads_callback():
     }
 
     response = requests.post(token_url, data=token_data, timeout=30)
-    token_json = response.json()
+
+    if not response.ok:
+        return jsonify({
+            "error": "Token exchange failed (HTTP)",
+            "status": response.status_code,
+            "body": response.text[:2000],
+        }), 400
+
+    try:
+        token_json = response.json()
+    except ValueError:
+        return jsonify({
+            "error": "Token exchange failed (non-JSON response)",
+            "status": response.status_code,
+            "body": response.text[:2000],
+            "content_type": response.headers.get("Content-Type"),
+        }), 400
 
     if "access_token" not in token_json:
         return jsonify({"error": "Token exchange failed", "details": token_json}), 400
@@ -443,9 +481,16 @@ def get_ga_client() -> BetaAnalyticsDataClient | None:
 
     return BetaAnalyticsDataClient(credentials=creds)
 
-
 @app.route("/ga/login")
 def ga_login():
+    ga_scopes = [
+        "https://www.googleapis.com/auth/analytics.readonly",
+        "https://www.googleapis.com/auth/analytics.edit",
+        "https://www.googleapis.com/auth/analytics.manage.users",
+        "https://www.googleapis.com/auth/analytics",
+        "https://www.googleapis.com/auth/adwords",
+    ]
+
     flow = Flow.from_client_config(
         {
             "web": {
@@ -456,25 +501,29 @@ def ga_login():
                 "redirect_uris": [GA_REDIRECT_URI],
             }
         },
-        scopes=[
-            "https://www.googleapis.com/auth/analytics.readonly",
-            "https://www.googleapis.com/auth/analytics.edit",
-            "https://www.googleapis.com/auth/analytics.manage.users",
-            "https://www.googleapis.com/auth/analytics",
-        ],
+        scopes=ga_scopes,
     )
     flow.redirect_uri = GA_REDIRECT_URI
 
-    auth_url, _ = flow.authorization_url(
+    auth_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
     )
-    return redirect(auth_url)
 
+    session["ga_state"] = state   # ✅ STORE STATE
+    return redirect(auth_url)
 
 @app.route("/ga/callback")
 def ga_callback():
+    ga_scopes = [
+        "https://www.googleapis.com/auth/analytics.readonly",
+        "https://www.googleapis.com/auth/analytics.edit",
+        "https://www.googleapis.com/auth/analytics.manage.users",
+        "https://www.googleapis.com/auth/analytics",
+        "https://www.googleapis.com/auth/adwords",
+    ]
+
     flow = Flow.from_client_config(
         {
             "web": {
@@ -485,12 +534,8 @@ def ga_callback():
                 "redirect_uris": [GA_REDIRECT_URI],
             }
         },
-        scopes=[
-            "https://www.googleapis.com/auth/analytics.readonly",
-            "https://www.googleapis.com/auth/analytics.edit",
-            "https://www.googleapis.com/auth/analytics.manage.users",
-            "https://www.googleapis.com/auth/analytics",
-        ],
+        scopes=ga_scopes,
+        state=session.get("ga_state"),   # ✅ REUSE STATE
     )
     flow.redirect_uri = GA_REDIRECT_URI
 
@@ -507,7 +552,6 @@ def ga_callback():
     }
 
     return redirect(f"{FRONTEND_BASE_URL}/connect/google-analytics?ga_ready=true")
-
 
 @app.route("/ga/properties")
 def get_ga_properties():
@@ -592,6 +636,12 @@ def fetch_ga_campaigns():
     property_id = request.args.get("property_id")
     if not property_id:
         return jsonify({"error": "property_id is required"}), 400
+    
+    user_id = session.get("user_id")
+
+    if not user_id:
+        user_id = 1
+        session["user_id"] = user_id
 
     req = RunReportRequest(
         property=f"properties/{property_id}",
@@ -607,21 +657,36 @@ def fetch_ga_campaigns():
 
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id FROM datasources WHERE source_name = 'Google Analytics' LIMIT 1;")
+
+            # ✅ Google Analytics datasource pro user
+            cursor.execute(
+                "SELECT id FROM datasources WHERE source_name = %s AND user_id = %s LIMIT 1;",
+                ("Google Analytics", user_id),
+            )
             ds_row = cursor.fetchone()
+
             if not ds_row:
-                return jsonify({"error": "Google Analytics not found in datasources table"}), 500
-            data_source_id = ds_row[0]
+                cursor.execute(
+                    "INSERT INTO datasources (user_id, source_name) VALUES (%s, %s) RETURNING id;",
+                    (user_id, "Google Analytics"),
+                )
+                data_source_id = cursor.fetchone()[0]
+            else:
+                data_source_id = ds_row[0]
 
             for row in response.rows:
                 campaign_name = row.dimension_values[1].value or "(not set)"
                 raw_date = row.dimension_values[0].value  # YYYYMMDD
                 formatted_date = datetime.strptime(raw_date, "%Y%m%d").date()
-
                 sessions_val = int(row.metric_values[0].value or 0)
 
-                cursor.execute("SELECT id FROM campaigns WHERE campaign_name = %s LIMIT 1;", (campaign_name,))
+                # ✅ Campaigns (erstmal wie bei dir - falls campaigns.user_id NOT NULL ist, sag Bescheid)
+                cursor.execute(
+                    "SELECT id FROM campaigns WHERE campaign_name = %s LIMIT 1;",
+                    (campaign_name,),
+                )
                 existing = cursor.fetchone()
+
                 if existing:
                     campaign_id = existing[0]
                 else:
@@ -633,16 +698,37 @@ def fetch_ga_campaigns():
 
                 cursor.execute(
                     """
-                    INSERT INTO performanceMetrics (data_source_id, campaign_id, date, sessions)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO performanceMetrics (
+                        data_source_id, campaign_id, date,
+                        costs, impressions, clicks, cost_per_click,
+                        sessions, conversions, cost_per_conversion
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (data_source_id, campaign_id, date) DO UPDATE
-                    SET sessions = EXCLUDED.sessions;
+                    SET
+                        sessions = EXCLUDED.sessions,
+                        costs = EXCLUDED.costs,
+                        impressions = EXCLUDED.impressions,
+                        clicks = EXCLUDED.clicks,
+                        cost_per_click = EXCLUDED.cost_per_click,
+                        conversions = EXCLUDED.conversions,
+                        cost_per_conversion = EXCLUDED.cost_per_conversion;
                     """,
-                    (data_source_id, campaign_id, formatted_date, sessions_val),
+                    (
+                        data_source_id,
+                        campaign_id,
+                        formatted_date,
+                        0,  # costs
+                        0,  # impressions
+                        0,  # clicks
+                        0,  # cost_per_click
+                        sessions_val,
+                        0,  # conversions
+                        0,  # cost_per_conversion
+                    ),
                 )
 
         conn.commit()
-
     return jsonify({"message": "Google Analytics campaign data stored"}), 200
 
 

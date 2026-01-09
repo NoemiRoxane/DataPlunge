@@ -199,6 +199,14 @@ useEffect(() => {
           </p>
         </div>
         <div className="card">
+          <h3>Sessions</h3>
+          <p className="value">
+            {aggregatedData.length > 0
+              ? aggregatedData.reduce((sum, item) => sum + (item.sessions || 0), 0)
+              : "0"}
+          </p>
+        </div>
+        <div className="card">
           <h3>Conversions</h3>
           <p className="value">
             {aggregatedData.length > 0

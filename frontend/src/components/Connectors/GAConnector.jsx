@@ -31,10 +31,44 @@ function GAConnector({ gaReady, browserUser }) {
     );
   };
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     console.log("✅ Verbinde GA Properties:", selectedProperties);
-    setStep(3);
+  
+    try {
+      // optional: UI feedback
+      setStep(3);
+  
+      // Import + save for each selected GA property
+      const results = await Promise.all(
+        selectedProperties.map(async (propertyId) => {
+          const res = await fetch(
+            `http://localhost:5000/ga/fetch-campaigns?property_id=${propertyId}`,
+            { method: "GET", credentials: "include" }
+          );
+  
+          const data = await res.json();
+  
+          if (!res.ok) {
+            throw new Error(data?.error || `GA import failed for ${propertyId}`);
+          }
+  
+          return { propertyId, data };
+        })
+      );
+  
+      console.log("✅ GA Import finished:", results);
+  
+      // Optional: Redirect back to dashboard after import
+      window.location.href = "/";
+  
+    } catch (err) {
+      console.error("❌ GA Connect/Import failed:", err);
+      alert(`GA Import failed: ${err.message}`);
+      // go back so user can retry
+      setStep(2);
+    }
   };
+  
 
   const StepIndicator = () => (
     <div className="step-indicator">
