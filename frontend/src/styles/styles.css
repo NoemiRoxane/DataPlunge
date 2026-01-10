@@ -26,11 +26,16 @@ body {
   min-height: 100vh;
 }
 
+html, body, #root {
+  height: 100%;
+}
+
 .app-container {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  height: 100vh;
 }
+
 
 
 
@@ -40,38 +45,58 @@ body {
   gap: 20px;
 }
 
-
 .top-header {
   background-color: var(--blue-dark);
-  justify-content: space-between;
-  height: 80px !important;
+
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  font-size: 20px !important;
-  font-weight: bold;
+  justify-content: space-between;
+
+  height: 58px;
+  min-height: 58px;
+  max-height: 58px;
+  flex: 0 0 58px;
+
+  padding: 0 24px;
+  box-sizing: border-box;
+
   font-family: var(--font-heading);
+
+  position: sticky;
+  top: 0;
+  z-index: 1000;
 }
+
+
+
 
 .header-title {
-  font-size: 28px; /* Schriftgröße der gesamten Überschrift */
-  font-family: var(--font-heading); /* Schriftart */
+  font-family: var(--font-body);
+  font-size: 26px;
   font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;       /* WICHTIG: verhindert Extra-Höhe */
   display: flex;
   align-items: center;
+
 }
 
+
 .header-title-data {
-  color: #ffffff; /* Weiß für 'Data' */
+  color: #ffffff;
+  line-height: 1;
 }
 
 .header-title-plunge {
   color: var(--midle-blue);
+  line-height: 1;
 }
+
 
 .content-wrapper {
   display: flex;
   flex: 1;
+  min-height: 0;
 }
 
 .sidebar {
