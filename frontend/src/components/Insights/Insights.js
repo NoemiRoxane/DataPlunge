@@ -10,34 +10,36 @@ function Insights({ startDate, endDate }) {
       if (!startDate || !endDate) {
         console.log('Start or end date not set.');
         setInsights([{ message: 'Please select both start and end dates.' }]);
+        setCurrentIndex(0); // ✅ reset
         return;
       }
-
-      const start = startDate.toISOString().split('T')[0];
-      const end = endDate.toISOString().split('T')[0];
-      const url = `http://127.0.0.1:5000/insights?start_date=${start}&end_date=${end}`;
-      console.log('Fetching insights from:', url); // Log the URL to verify it's correct
-
+  
       try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error('Failed to fetch insights');
-        }
+        const response = await fetch(
+          `http://127.0.0.1:5000/insights?start_date=${startDate.toISOString().split('T')[0]}&end_date=${endDate.toISOString().split('T')[0]}`
+        );
+  
         const data = await response.json();
-        console.log("Fetched insights:", data); // Log the data to see what's being loaded
-        if (data.length === 0) {
-          setInsights([{ message: 'No insights available.' }]);
+  
+        if (Array.isArray(data)) {
+          setInsights(data.length ? data : [{ message: 'No insights available.' }]);
+        } else if (data?.error) {
+          setInsights([{ message: data.error }]);
         } else {
-          setInsights(data);
+          setInsights([{ message: 'Unexpected insights response.' }]);
         }
+  
+        setCurrentIndex(0); // ✅ WICHTIG: immer resetten bei neuen Insights
       } catch (error) {
         console.error('Error fetching insights:', error);
-        setInsights([{ message: 'Failed to load insights. Please try again later.' }]);
+        setInsights([{ message: 'Failed to load insights.' }]);
+        setCurrentIndex(0); // ✅ auch hier
       }
     };
-
+  
     fetchInsights();
-  }, [startDate, endDate]); // Dependency array to trigger re-fetch
+  }, [startDate, endDate]);
+  
 
   const handleNext = () => {
     if (currentIndex < insights.length - 1) {

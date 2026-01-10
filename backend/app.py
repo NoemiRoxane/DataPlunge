@@ -987,7 +987,6 @@ def filter_performance():
         ]
     )
 
-
 @app.route("/insights", methods=["GET"])
 def get_insights():
     start_date = request.args.get("start_date")
@@ -995,51 +994,97 @@ def get_insights():
     if not start_date or not end_date:
         return jsonify({"error": "start_date and end_date are required"}), 400
 
+    # 1) Aggregate to ONE row per day (otherwise you get thousands of rows)
     with get_db() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT date, costs, conversions, cost_per_conversion,
-                       impressions, clicks, sessions, cost_per_click
-                FROM performanceMetrics
-                WHERE date BETWEEN %s AND %s
-                ORDER BY date;
+                SELECT
+                    pm.date,
+                    SUM(pm.costs) AS costs,
+                    SUM(pm.conversions) AS conversions,
+                    CASE
+                        WHEN SUM(pm.conversions) > 0 THEN SUM(pm.costs) / SUM(pm.conversions)
+                        ELSE 0
+                    END AS cost_per_conversion,
+                    SUM(pm.impressions) AS impressions,
+                    SUM(pm.clicks) AS clicks,
+                    SUM(pm.sessions) AS sessions,
+                    CASE
+                        WHEN SUM(pm.clicks) > 0 THEN SUM(pm.costs) / SUM(pm.clicks)
+                        ELSE 0
+                    END AS cost_per_click
+                FROM performanceMetrics pm
+                WHERE pm.date BETWEEN %s AND %s
+                GROUP BY pm.date
+                ORDER BY pm.date;
                 """,
                 (start_date, end_date),
             )
             rows = cursor.fetchall()
 
+    # Return empty list instead of 404 so frontend can handle nicely
     if not rows:
-        return jsonify({"error": "No data available for the given dates"}), 404
+        return jsonify([]), 200
 
-    total_costs = sum(r["costs"] for r in rows)
-    total_conversions = sum(r["conversions"] for r in rows)
-    avg_cpa = total_costs / total_conversions if total_conversions else 0
+    # 2) Compute summary stats on aggregated daily rows
+    total_costs = sum(float(r["costs"] or 0) for r in rows)
+    total_conversions = sum(float(r["conversions"] or 0) for r in rows)
+    avg_cpa = (total_costs / total_conversions) if total_conversions else 0
 
-    highest_cost_day = max(rows, key=lambda x: x["costs"])
+    highest_cost_day = max(rows, key=lambda x: float(x["costs"] or 0))
+    highest_conv_day = max(rows, key=lambda x: float(x["conversions"] or 0))
 
+    best_cpa_day = None
+    rows_with_conv = [r for r in rows if float(r["conversions"] or 0) > 0]
+    if rows_with_conv:
+        best_cpa_day = min(rows_with_conv, key=lambda x: float(x["cost_per_conversion"] or 0))
+
+    first = rows[0]
+    last = rows[-1]
+    first_cost = float(first["costs"] or 0)
+    last_cost = float(last["costs"] or 0)
+    cost_change_pct = ((last_cost - first_cost) / first_cost * 100) if first_cost else 0
+
+    # 3) Build a SMALL set of useful insights (no per-day growth spam)
     insights = [
         {
             "date": highest_cost_day["date"].isoformat(),
-            "message": f"Highest costs were on {highest_cost_day['date'].isoformat()} with CHF {highest_cost_day['costs']:.2f}.",
+            "message": (
+                f"Highest costs were on {highest_cost_day['date'].isoformat()} "
+                f"with CHF {float(highest_cost_day['costs'] or 0):.2f}."
+            ),
         },
-        {"message": f"Average cost per conversion for the period: CHF {avg_cpa:.2f}."},
+        {
+            "message": f"Average cost per conversion for the period: CHF {avg_cpa:.2f}."
+        },
+        {
+            "message": (
+                f"Cost trend from {first['date'].isoformat()} → {last['date'].isoformat()}: "
+                f"{cost_change_pct:+.2f}%."
+            )
+        },
+        {
+            "date": highest_conv_day["date"].isoformat(),
+            "message": (
+                f"Most conversions were on {highest_conv_day['date'].isoformat()} "
+                f"({float(highest_conv_day['conversions'] or 0):.0f} conversions)."
+            ),
+        },
     ]
 
-    # Simple growth messages
-    if len(rows) > 1:
-        prev = rows[0]
-        for current in rows[1:]:
-            growth = ((current["costs"] - prev["costs"]) / prev["costs"] * 100) if prev["costs"] else 0
-            insights.append(
-                {
-                    "date": current["date"].isoformat(),
-                    "message": f"Costs grew by {growth:.2f}% on {current['date'].isoformat()} compared to {prev['date'].isoformat()}.",
-                }
-            )
-            prev = current
+    if best_cpa_day:
+        insights.append(
+            {
+                "date": best_cpa_day["date"].isoformat(),
+                "message": (
+                    f"Best cost per conversion was on {best_cpa_day['date'].isoformat()}: "
+                    f"CHF {float(best_cpa_day['cost_per_conversion'] or 0):.2f}."
+                ),
+            }
+        )
 
-    return jsonify(insights)
+    return jsonify(insights), 200
 
 
 @app.route("/aggregated-performance", methods=["GET"])
