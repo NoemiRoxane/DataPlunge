@@ -1,5 +1,6 @@
 import os
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timedelta, timezone
 
 import psycopg2
 import requests
@@ -804,7 +805,6 @@ def select_meta_account():
     # Optional: trigger fetch immediately, same as your original behavior
     return fetch_and_store_meta_campaigns()
 
-
 @app.route("/meta/fetch-campaigns")
 def fetch_and_store_meta_campaigns():
     access_token = session.get("meta_token")
@@ -832,37 +832,59 @@ def fetch_and_store_meta_campaigns():
 
     with get_db() as conn:
         with conn.cursor() as cursor:
+            # ✅ Get datasource id
             cursor.execute("SELECT id FROM datasources WHERE source_name = 'Meta' LIMIT 1;")
             ds_row = cursor.fetchone()
             if not ds_row:
                 return jsonify({"error": "Meta not found in datasources"}), 500
             data_source_id = ds_row[0]
 
-            end_date = datetime.utcnow().date()
+            # ✅ timezone-aware UTC date range (last 30 days)
+            end_date = datetime.now(timezone.utc).date()
             start_date = end_date - timedelta(days=30)
 
             inserted = 0
 
             for campaign in campaigns:
-                campaign_id = int(campaign["id"])
+                # Meta campaign id is large -> keep as TEXT in DB external_id
+                meta_campaign_external_id = str(campaign["id"])
                 campaign_name = campaign["name"]
 
-                cursor.execute("SELECT id FROM campaigns WHERE id = %s LIMIT 1;", (campaign_id,))
+                # ✅ Lookup campaign by (data_source_id, external_id)
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM campaigns
+                    WHERE data_source_id = %s AND external_id = %s
+                    LIMIT 1;
+                    """,
+                    (data_source_id, meta_campaign_external_id),
+                )
                 existing = cursor.fetchone()
-                if not existing:
+
+                if existing:
+                    campaign_db_id = existing[0]
+                else:
+                    # ✅ Insert campaign WITHOUT setting id (DB generates internal id)
                     cursor.execute(
-                        "INSERT INTO campaigns (id, campaign_name) VALUES (%s, %s) RETURNING id;",
-                        (campaign_id, campaign_name),
+                        """
+                        INSERT INTO campaigns (campaign_name, data_source_id, external_id)
+                        VALUES (%s, %s, %s)
+                        RETURNING id;
+                        """,
+                        (campaign_name, data_source_id, meta_campaign_external_id),
                     )
                     campaign_db_id = cursor.fetchone()[0]
-                else:
-                    campaign_db_id = existing[0]
 
-                insights_url = f"https://graph.facebook.com/v19.0/{campaign_id}/insights"
+                # Fetch insights per campaign (use external id for Meta API)
+                insights_url = f"https://graph.facebook.com/v19.0/{meta_campaign_external_id}/insights"
                 insights_params = {
                     "fields": "date_start,spend,impressions,clicks,actions",
                     "time_range": json.dumps(
-                        {"since": start_date.strftime("%Y-%m-%d"), "until": end_date.strftime("%Y-%m-%d")}
+                        {
+                            "since": start_date.strftime("%Y-%m-%d"),
+                            "until": end_date.strftime("%Y-%m-%d"),
+                        }
                     ),
                     "time_increment": "1",
                     "access_token": access_token,
@@ -876,18 +898,20 @@ def fetch_and_store_meta_campaigns():
 
                 for row in insights_json["data"]:
                     date = row["date_start"]
-                    costs = float(row.get("spend", 0))
-                    impressions = int(row.get("impressions", 0))
-                    clicks = int(row.get("clicks", 0))
-                    actions = row.get("actions", [])
+                    costs = float(row.get("spend", 0) or 0)
+                    impressions = int(row.get("impressions", 0) or 0)
+                    clicks = int(row.get("clicks", 0) or 0)
+                    actions = row.get("actions", []) or []
 
                     # Keep your existing action mapping (can be improved later)
                     conversions = sum(
-                        int(a["value"]) for a in actions
+                        int(a.get("value", 0) or 0)
+                        for a in actions
                         if a.get("action_type") == "onsite_conversion.lead_grouped"
                     )
                     sessions = sum(
-                        int(a["value"]) for a in actions
+                        int(a.get("value", 0) or 0)
+                        for a in actions
                         if a.get("action_type") == "link_click"
                     )
 
@@ -928,6 +952,8 @@ def fetch_and_store_meta_campaigns():
         conn.commit()
 
     return jsonify({"message": f"{inserted} campaigns stored"}), 200
+
+
 
 
 # -----------------------------------------------------------------------------
