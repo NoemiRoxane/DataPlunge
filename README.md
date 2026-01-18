@@ -128,7 +128,7 @@ DataPlunge/
 └── requirements.txt   # Python dependencies
 ```
 
-## Notes
+## Notes 
 
 - Ensure PostgreSQL is running before starting the backend
 - The frontend proxies API requests to `http://localhost:5000` (configured in `frontend/package.json`)
