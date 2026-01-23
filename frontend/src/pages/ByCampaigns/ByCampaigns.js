@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import DataTable from "react-data-table-component";
 import { toast, ToastContainer } from "react-toastify";
 import { FaFilter, FaDownload } from "react-icons/fa";
-import { useDate } from "../../context/DateContext"; 
+import { useDate } from "../../context/DateContext";
+import * as api from "../../utils/api";
 import "react-toastify/dist/ReactToastify.css";
 import "./ByCampaigns.css";
 import DatePicker from "react-datepicker";
@@ -22,8 +23,7 @@ const ByCampaigns = () => {
 
             console.log(`📡 Fetching campaigns from: ${start} to ${end}`);
 
-            fetch(`http://127.0.0.1:5000/get-campaigns?start_date=${start}&end_date=${end}`)
-                .then((response) => response.json())
+            api.get(`/get-campaigns?start_date=${start}&end_date=${end}`)
                 .then((data) => {
                     console.log("✅ API Response:", data);
                     setCampaigns(data); // Store API data
@@ -32,6 +32,8 @@ const ByCampaigns = () => {
                 .catch((error) => {
                     console.error("❌ Error fetching campaigns:", error);
                     toast.error("Error loading campaign data.");
+                    setCampaigns([]);
+                    setFilteredData([]);
                 });
         }
     }, [dateRange]); 
@@ -68,17 +70,17 @@ const ByCampaigns = () => {
         { name: "Cost per Conversion", selector: (row) => `CHF${(parseFloat(row.cost_per_conversion) || 0).toFixed(2)}`, sortable: true },
     ];
 
-    // ✅ Compute Total Row
-    const totalRow = {
+    // ✅ Compute Total Row (with safety check)
+    const totalRow = Array.isArray(filteredData) && filteredData.length > 0 ? {
         traffic_source: "Total",
         campaign_name: "",
-        costs: filteredData.reduce((sum, row) => sum + row.costs, 0),
-        impressions: filteredData.reduce((sum, row) => sum + row.impressions, 0),
-        clicks: filteredData.reduce((sum, row) => sum + row.clicks, 0),
-        cost_per_click: (filteredData.reduce((sum, row) => sum + row.cost_per_click, 0) / filteredData.length) || 0,
-        conversions: filteredData.reduce((sum, row) => sum + row.conversions, 0),
-        cost_per_conversion: (filteredData.reduce((sum, row) => sum + row.cost_per_conversion, 0) / filteredData.length) || 0,
-    };
+        costs: filteredData.reduce((sum, row) => sum + (parseFloat(row.costs) || 0), 0),
+        impressions: filteredData.reduce((sum, row) => sum + (parseInt(row.impressions) || 0), 0),
+        clicks: filteredData.reduce((sum, row) => sum + (parseInt(row.clicks) || 0), 0),
+        cost_per_click: (filteredData.reduce((sum, row) => sum + (parseFloat(row.cost_per_click) || 0), 0) / filteredData.length) || 0,
+        conversions: filteredData.reduce((sum, row) => sum + (parseFloat(row.conversions) || 0), 0),
+        cost_per_conversion: (filteredData.reduce((sum, row) => sum + (parseFloat(row.cost_per_conversion) || 0), 0) / filteredData.length) || 0,
+    } : null;
 
     return (
         <div className="page-container">
@@ -100,7 +102,7 @@ const ByCampaigns = () => {
 
             <DataTable
                 columns={columns}
-                data={[...filteredData, totalRow]}
+                data={totalRow ? [...filteredData, totalRow] : filteredData}
                 pagination
                 highlightOnHover
                 responsive

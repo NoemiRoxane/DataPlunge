@@ -1,18 +1,88 @@
 import React, { useEffect, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import { useSearchParams } from 'react-router-dom';
 import Insights from "../../components/Insights/Insights";
 import PerformanceChart from "../../components/Performance/PerformanceChart";
+import Onboarding from "../../components/Onboarding/Onboarding";
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './dashboard.css';
-import { useDate } from '../../context/DateContext'; // Verwende den DateContext
+import { useDate } from '../../context/DateContext';
+import { useAuth } from '../../context/AuthContext';
+import * as api from '../../utils/api';
+
+// Helper to get user-specific onboarding key
+const getOnboardingKey = (userId) => `dataplunge_onboarding_dismissed_${userId}`;
 
 
 function Dashboard() {
   const { dateRange, setDateRange } = useDate(); // Verwende den DateContext
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filteredData, setFilteredData] = useState([]); // Gefilterte Daten
   const [aggregatedData, setAggregatedData] = useState([]); // Aggregierte Daten
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+
+  // Check URL param for setup wizard trigger (separate effect for immediate response)
+  useEffect(() => {
+    const openSetup = searchParams.get('setup');
+    if (openSetup === 'true') {
+      setShowOnboarding(true);
+      setOnboardingChecked(true);
+      // Clear the param from URL
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('setup');
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  // Check if user has any data sources and if onboarding was dismissed (initial load only)
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      if (!user) return;
+
+      // Skip if already showing onboarding (from URL param)
+      if (showOnboarding) {
+        setOnboardingChecked(true);
+        return;
+      }
+
+      // Check if user has dismissed onboarding before
+      const onboardingKey = getOnboardingKey(user.id);
+      const wasDismissed = localStorage.getItem(onboardingKey) === 'true';
+
+      if (wasDismissed) {
+        setShowOnboarding(false);
+        setOnboardingChecked(true);
+        return;
+      }
+
+      // Check if user has any data sources
+      try {
+        const datasources = await api.get('/user/datasources');
+        // Show onboarding only if user has no data sources AND hasn't dismissed it
+        setShowOnboarding(datasources.length === 0);
+      } catch (err) {
+        console.error('Failed to check data sources:', err);
+        setShowOnboarding(false);
+      } finally {
+        setOnboardingChecked(true);
+      }
+    };
+    checkOnboarding();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  // Handle onboarding dismissal
+  const handleOnboardingDismiss = () => {
+    if (user) {
+      const onboardingKey = getOnboardingKey(user.id);
+      localStorage.setItem(onboardingKey, 'true');
+    }
+    setShowOnboarding(false);
+  };
 
 // Setze beim allerersten Aufruf den aktuellen Monat, danach bleibt das gewählte Datum erhalten
 useEffect(() => {
@@ -65,7 +135,7 @@ useEffect(() => {
     console.log('Selected End Date:', end);
     console.log('Computed Value for API:', value);
 
-    fetch(`http://127.0.0.1:5000/filter-performance?range=range&value=${value}`)
+    api.get(`/filter-performance?range=range&value=${value}`)
       .then((response) => {
         console.log('Response status:', response.status);
         if (!response.ok) {
@@ -168,6 +238,12 @@ useEffect(() => {
   return (
     <div className="page-container">
       <ToastContainer />
+      {onboardingChecked && showOnboarding && (
+        <Onboarding
+          onComplete={handleOnboardingDismiss}
+          onSkip={handleOnboardingDismiss}
+        />
+      )}
       <header className="page-header">
         <h1>Performance Overall</h1>
         <div className="header-controls">

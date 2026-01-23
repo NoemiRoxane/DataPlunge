@@ -9,6 +9,7 @@ from flask import Flask, jsonify, redirect, request, session, g
 from flask_cors import CORS
 from flask_session import Session
 from psycopg2.extras import DictCursor
+from email_validator import validate_email, EmailNotValidError
 
 from google.ads.googleads.client import GoogleAdsClient
 from google.auth.transport.requests import Request as GoogleRequest
@@ -26,6 +27,20 @@ from google.analytics.admin_v1alpha import AnalyticsAdminServiceClient
 from google.analytics.admin_v1alpha.types import ListPropertiesRequest
 from google.auth.transport.requests import Request as GARequest
 from google.oauth2.credentials import Credentials as GACredentials
+
+# Import auth module
+from auth import (
+    login_required,
+    get_current_user,
+    create_user,
+    get_user_by_email,
+    get_user_by_google_id,
+    verify_password,
+    generate_session_token,
+    create_or_update_user_from_google,
+    update_last_login,
+    hash_password
+)
 
 # -----------------------------------------------------------------------------
 # Local development setting: allow OAuth over HTTP (do NOT use in production).
@@ -70,6 +85,11 @@ META_APP_ID = require_env("META_APP_ID", os.getenv("META_APP_ID"))
 META_APP_SECRET = require_env("META_APP_SECRET", os.getenv("META_APP_SECRET"))
 META_REDIRECT_URI = require_env("META_REDIRECT_URI", os.getenv("META_REDIRECT_URI"))
 
+# Google OAuth for User Authentication
+GOOGLE_USER_AUTH_CLIENT_ID = require_env("GOOGLE_USER_AUTH_CLIENT_ID", os.getenv("GOOGLE_USER_AUTH_CLIENT_ID"))
+GOOGLE_USER_AUTH_CLIENT_SECRET = require_env("GOOGLE_USER_AUTH_CLIENT_SECRET", os.getenv("GOOGLE_USER_AUTH_CLIENT_SECRET"))
+GOOGLE_USER_AUTH_REDIRECT_URI = require_env("GOOGLE_USER_AUTH_REDIRECT_URI", os.getenv("GOOGLE_USER_AUTH_REDIRECT_URI"))
+
 
 # -----------------------------------------------------------------------------
 # Flask app setup
@@ -108,49 +128,52 @@ def close_db(_error):
 
 
 # -----------------------------------------------------------------------------
-# Google Ads token storage (DB)
+# Google Ads token storage (DB) - User-scoped
 # -----------------------------------------------------------------------------
-def store_refresh_token(customer_id: str, refresh_token: str) -> None:
-    """Insert or update a refresh token for a customer."""
+def store_refresh_token(customer_id: str, refresh_token: str, user_id: int) -> None:
+    """Insert or update a refresh token for a customer and user."""
     with get_db() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO google_ads_tokens (customer_id, refresh_token)
-                VALUES (%s, %s)
-                ON CONFLICT (customer_id) DO UPDATE
-                SET refresh_token = EXCLUDED.refresh_token;
+                INSERT INTO google_ads_tokens (customer_id, user_id, refresh_token, updated_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (customer_id, user_id) DO UPDATE
+                SET refresh_token = EXCLUDED.refresh_token, updated_at = EXCLUDED.updated_at;
                 """,
-                (customer_id, refresh_token),
+                (customer_id, user_id, refresh_token, datetime.now(timezone.utc)),
             )
         conn.commit()
 
 
-def get_refresh_token(customer_id: str) -> str | None:
-    """Fetch refresh token for a customer from DB."""
+def get_refresh_token(customer_id: str, user_id: int) -> str | None:
+    """Fetch refresh token for a customer and user from DB."""
     with get_db() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT refresh_token FROM google_ads_tokens WHERE customer_id = %s;",
-                (customer_id,),
+                "SELECT refresh_token FROM google_ads_tokens WHERE customer_id = %s AND user_id = %s;",
+                (customer_id, user_id),
             )
             row = cursor.fetchone()
             return row[0] if row else None
 
 
-def delete_refresh_token(customer_id: str) -> None:
+def delete_refresh_token(customer_id: str, user_id: int) -> None:
     """Delete refresh token from DB (e.g., when invalid)."""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM google_ads_tokens WHERE customer_id = %s;", (customer_id,))
+            cursor.execute(
+                "DELETE FROM google_ads_tokens WHERE customer_id = %s AND user_id = %s;",
+                (customer_id, user_id)
+            )
         conn.commit()
 
 
-def refresh_access_token(customer_id: str) -> str | None:
+def refresh_access_token(customer_id: str, user_id: int) -> str | None:
     """Refresh a Google OAuth access token using stored refresh token (DB)."""
-    refresh_token = get_refresh_token(customer_id)
+    refresh_token = get_refresh_token(customer_id, user_id)
     if not refresh_token:
-        print(f"❌ No refresh token found for customer {customer_id}. Re-authentication required.")
+        print(f"❌ No refresh token found for customer {customer_id} and user {user_id}. Re-authentication required.")
         return None
 
     token_url = "https://oauth2.googleapis.com/token"
@@ -171,10 +194,57 @@ def refresh_access_token(customer_id: str) -> str | None:
     # If refresh token is invalid, remove it so the user must re-auth.
     if token_json.get("error") == "invalid_grant":
         print(f"🔄 Refresh token invalid for customer {customer_id}. Removing from DB.")
-        delete_refresh_token(customer_id)
+        delete_refresh_token(customer_id, user_id)
 
     print(f"❌ Failed to refresh access token: {token_json}")
     return None
+
+
+# -----------------------------------------------------------------------------
+# OAuth token storage for GA4 and Meta (DB)
+# -----------------------------------------------------------------------------
+def store_oauth_token(user_id: int, provider: str, access_token: str, refresh_token: str | None = None,
+                      token_expiry: datetime | None = None, provider_account_id: str | None = None) -> None:
+    """Store or update OAuth token for a provider."""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO oauth_tokens (user_id, provider, access_token, refresh_token, token_expiry, provider_account_id, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, provider) DO UPDATE
+                SET access_token = EXCLUDED.access_token,
+                    refresh_token = EXCLUDED.refresh_token,
+                    token_expiry = EXCLUDED.token_expiry,
+                    provider_account_id = EXCLUDED.provider_account_id,
+                    updated_at = EXCLUDED.updated_at;
+                """,
+                (user_id, provider, access_token, refresh_token, token_expiry, provider_account_id, datetime.now(timezone.utc))
+            )
+        conn.commit()
+
+
+def get_oauth_token(user_id: int, provider: str) -> dict | None:
+    """Get OAuth token for a provider."""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT access_token, refresh_token, token_expiry, provider_account_id
+                FROM oauth_tokens
+                WHERE user_id = %s AND provider = %s;
+                """,
+                (user_id, provider)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                'access_token': row[0],
+                'refresh_token': row[1],
+                'token_expiry': row[2],
+                'provider_account_id': row[3]
+            }
 
 
 def get_customer_ids_from_api(access_token: str) -> list[str]:
@@ -214,20 +284,23 @@ def get_customer_ids_from_api(access_token: str) -> list[str]:
 
     return customer_ids
 
-def get_customer_id_from_db() -> str | None:
-    """Get one stored customer_id from DB (simple fallback)."""
+def get_customer_id_from_db(user_id: int) -> str | None:
+    """Get one stored customer_id from DB for a specific user."""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT customer_id FROM google_ads_tokens LIMIT 1;")
+            cursor.execute(
+                "SELECT customer_id FROM google_ads_tokens WHERE user_id = %s LIMIT 1;",
+                (user_id,)
+            )
             row = cursor.fetchone()
             return row[0] if row else None
 
 
-def get_google_ads_client(customer_id: str) -> GoogleAdsClient | None:
+def get_google_ads_client(customer_id: str, user_id: int) -> GoogleAdsClient | None:
     """Create GoogleAdsClient using refresh token from DB."""
-    refresh_token = get_refresh_token(customer_id)
+    refresh_token = get_refresh_token(customer_id, user_id)
     if not refresh_token:
-        print(f"❌ No refresh token found for customer {customer_id}.")
+        print(f"❌ No refresh token found for customer {customer_id} and user {user_id}.")
         return None
 
     # Optional: verify token can be refreshed (helps early detection).
@@ -263,9 +336,285 @@ def get_google_ads_client(customer_id: str) -> GoogleAdsClient | None:
 
 
 # -----------------------------------------------------------------------------
+# Authentication routes
+# -----------------------------------------------------------------------------
+@app.route("/auth/register", methods=["POST"])
+def register():
+    """Register a new user account with email/password."""
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    email = data.get("email")
+    password = data.get("password")
+    full_name = data.get("full_name")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    # Validate email
+    try:
+        validate_email(email)
+    except EmailNotValidError as e:
+        return jsonify({"error": f"Invalid email: {str(e)}"}), 400
+
+    # Validate password strength
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    # Create user
+    user = create_user(email, password, full_name)
+
+    if not user:
+        return jsonify({"error": "User with this email already exists"}), 400
+
+    # Generate session token
+    token = generate_session_token(user['id'])
+
+    # Update last login
+    update_last_login(user['id'])
+
+    return jsonify({
+        "token": token,
+        "user": {
+            "id": user['id'],
+            "email": user['email'],
+            "full_name": user['full_name']
+        }
+    }), 201
+
+
+@app.route("/auth/login", methods=["POST"])
+def login():
+    """Login with email and password."""
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    email = data.get("email")
+    password = data.get("password")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    # Get user by email
+    user = get_user_by_email(email)
+
+    if not user or not user.get('password_hash'):
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    # Verify password
+    if not verify_password(password, user['password_hash']):
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    # Generate session token
+    token = generate_session_token(user['id'])
+
+    # Update last login
+    update_last_login(user['id'])
+
+    return jsonify({
+        "token": token,
+        "user": {
+            "id": user['id'],
+            "email": user['email'],
+            "full_name": user['full_name']
+        }
+    }), 200
+
+
+@app.route("/auth/me", methods=["GET"])
+@login_required
+def get_me():
+    """Get current user information."""
+    user = get_current_user()
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    return jsonify({
+        "id": user['id'],
+        "email": user['email'],
+        "full_name": user['full_name'],
+        "created_at": user.get('created_at'),
+        "last_login": user.get('last_login')
+    }), 200
+
+
+@app.route("/auth/logout", methods=["POST"])
+@login_required
+def logout():
+    """Logout current user."""
+    # For JWT-based auth, logout is handled client-side by removing the token
+    return jsonify({"message": "Logged out successfully"}), 200
+
+
+@app.route("/auth/google/login")
+def google_user_auth_login():
+    """Initiate Google OAuth for user authentication."""
+    scopes = [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile"
+    ]
+
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_USER_AUTH_CLIENT_ID,
+                "client_secret": GOOGLE_USER_AUTH_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [GOOGLE_USER_AUTH_REDIRECT_URI],
+            }
+        },
+        scopes=scopes,
+    )
+    flow.redirect_uri = GOOGLE_USER_AUTH_REDIRECT_URI
+
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent",
+    )
+
+    session["google_user_auth_state"] = state
+    return redirect(auth_url)
+
+
+@app.route("/auth/google/callback")
+def google_user_auth_callback():
+    """Handle Google OAuth callback for user authentication."""
+    scopes = [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile"
+    ]
+
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_USER_AUTH_CLIENT_ID,
+                "client_secret": GOOGLE_USER_AUTH_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [GOOGLE_USER_AUTH_REDIRECT_URI],
+            }
+        },
+        scopes=scopes,
+        state=session.get("google_user_auth_state"),
+    )
+    flow.redirect_uri = GOOGLE_USER_AUTH_REDIRECT_URI
+
+    try:
+        flow.fetch_token(authorization_response=request.url)
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch token: {str(e)}"}), 400
+
+    creds = flow.credentials
+
+    # Get user info from Google
+    userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo"
+    headers = {"Authorization": f"Bearer {creds.token}"}
+    response = requests.get(userinfo_url, headers=headers, timeout=30)
+
+    if not response.ok:
+        return jsonify({"error": "Failed to get user info from Google"}), 400
+
+    google_user_info = response.json()
+
+    # Create or update user
+    user = create_or_update_user_from_google(google_user_info)
+
+    if not user:
+        return jsonify({"error": "Failed to create user"}), 500
+
+    # Generate session token
+    token = generate_session_token(user['id'])
+
+    # Redirect to frontend with token
+    redirect_url = f"{FRONTEND_BASE_URL}/auth/callback?token={token}"
+    return redirect(redirect_url)
+
+
+# -----------------------------------------------------------------------------
+# User data source management
+# -----------------------------------------------------------------------------
+@app.route("/user/datasources", methods=["GET"])
+@login_required
+def get_user_datasources():
+    """Get all data sources connected by the current user."""
+    user = get_current_user()
+    user_id = user['id']
+
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, source_name, created_at
+                FROM datasources
+                WHERE user_id = %s
+                ORDER BY created_at DESC;
+                """,
+                (user_id,)
+            )
+            rows = cursor.fetchall()
+
+            datasources = []
+            for row in rows:
+                # Get last sync info from performanceMetrics
+                cursor.execute(
+                    """
+                    SELECT MAX(updated_at) as last_sync
+                    FROM performanceMetrics pm
+                    WHERE pm.data_source_id = %s;
+                    """,
+                    (row['id'],)
+                )
+                sync_row = cursor.fetchone()
+
+                datasources.append({
+                    'id': row['id'],
+                    'source_name': row['source_name'],
+                    'created_at': row['created_at'].isoformat() if row['created_at'] else None,
+                    'last_sync': sync_row['last_sync'].isoformat() if sync_row and sync_row['last_sync'] else None,
+                    'status': 'connected'
+                })
+
+    return jsonify(datasources), 200
+
+
+@app.route("/user/datasources/<int:datasource_id>", methods=["DELETE"])
+@login_required
+def delete_user_datasource(datasource_id):
+    """Disconnect a data source (delete with CASCADE)."""
+    user = get_current_user()
+    user_id = user['id']
+
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            # Verify datasource belongs to user
+            cursor.execute(
+                "SELECT id FROM datasources WHERE id = %s AND user_id = %s;",
+                (datasource_id, user_id)
+            )
+            if not cursor.fetchone():
+                return jsonify({"error": "Data source not found or unauthorized"}), 404
+
+            # Delete datasource (CASCADE will handle related data)
+            cursor.execute("DELETE FROM datasources WHERE id = %s;", (datasource_id,))
+        conn.commit()
+
+    return jsonify({"message": "Data source disconnected successfully"}), 200
+
+
+# -----------------------------------------------------------------------------
 # Google Ads OAuth routes
 # -----------------------------------------------------------------------------
 @app.route("/google-ads/login")
+@login_required
 def google_ads_login():
     """Step 1: Redirect user to Google OAuth consent screen."""
     auth_url = (
@@ -281,6 +630,7 @@ def google_ads_login():
 
 
 @app.route("/google-ads/callback")
+@login_required
 def google_ads_callback():
     """Step 2: Handle Google OAuth callback and store refresh token(s)."""
     code = request.args.get("code")
@@ -325,11 +675,14 @@ def google_ads_callback():
     if not customer_ids:
         return jsonify({"error": "Failed to fetch customer IDs"}), 500
 
+    user = get_current_user()
+    user_id = user['id']
+
     # Store refresh token per customer (if Google returns one).
     for cid in customer_ids:
         if refresh_token:
-            store_refresh_token(cid, refresh_token)
-            print(f"✅ Stored refresh token for customer {cid}.")
+            store_refresh_token(cid, refresh_token, user_id)
+            print(f"✅ Stored refresh token for customer {cid} and user {user_id}.")
         else:
             print(f"⚠️ No refresh token returned for customer {cid} (already granted before?).")
 
@@ -345,13 +698,17 @@ def google_ads_callback():
 
 
 @app.route("/google-ads/fetch-campaigns")
+@login_required
 def fetch_and_store_campaigns():
     """Fetch Google Ads campaign performance and store it in DB."""
-    customer_id = session.get("customer_id") or get_customer_id_from_db()
+    user = get_current_user()
+    user_id = user['id']
+
+    customer_id = session.get("customer_id") or get_customer_id_from_db(user_id)
     if not customer_id:
         return jsonify({"error": "Customer ID not found"}), 400
 
-    client = get_google_ads_client(customer_id)
+    client = get_google_ads_client(customer_id, user_id)
     if not client:
         return jsonify({"error": "Could not create Google Ads client"}), 500
 
@@ -483,6 +840,7 @@ def get_ga_client() -> BetaAnalyticsDataClient | None:
     return BetaAnalyticsDataClient(credentials=creds)
 
 @app.route("/ga/login")
+@login_required
 def ga_login():
     ga_scopes = [
         "https://www.googleapis.com/auth/analytics.readonly",
@@ -516,6 +874,7 @@ def ga_login():
     return redirect(auth_url)
 
 @app.route("/ga/callback")
+@login_required
 def ga_callback():
     ga_scopes = [
         "https://www.googleapis.com/auth/analytics.readonly",
@@ -555,6 +914,7 @@ def ga_callback():
     return redirect(f"{FRONTEND_BASE_URL}/connect/google-analytics?ga_ready=true")
 
 @app.route("/ga/properties")
+@login_required
 def get_ga_properties():
     creds_data = session.get("ga_token")
     if not creds_data:
@@ -598,6 +958,7 @@ def get_ga_properties():
 
 
 @app.route("/ga/fetch-metrics")
+@login_required
 def fetch_ga_data():
     client = get_ga_client()
     if not client:
@@ -629,6 +990,7 @@ def fetch_ga_data():
 
 
 @app.route("/ga/fetch-campaigns")
+@login_required
 def fetch_ga_campaigns():
     client = get_ga_client()
     if not client:
@@ -737,6 +1099,7 @@ def fetch_ga_campaigns():
 # Meta routes
 # -----------------------------------------------------------------------------
 @app.route("/meta/login")
+@login_required
 def meta_login():
     oauth_url = (
         "https://www.facebook.com/v19.0/dialog/oauth"
@@ -750,6 +1113,7 @@ def meta_login():
 
 
 @app.route("/meta/callback")
+@login_required
 def meta_callback():
     code = request.args.get("code")
     if not code:
@@ -774,6 +1138,7 @@ def meta_callback():
 
 
 @app.route("/meta/adaccounts")
+@login_required
 def meta_adaccounts():
     access_token = session.get("meta_token")
     if not access_token:
@@ -793,6 +1158,7 @@ def meta_adaccounts():
 
 
 @app.route("/meta/select-account", methods=["POST"])
+@login_required
 def select_meta_account():
     payload = request.get_json(silent=True) or {}
     account_id = payload.get("account_id")
@@ -806,6 +1172,7 @@ def select_meta_account():
     return fetch_and_store_meta_campaigns()
 
 @app.route("/meta/fetch-campaigns")
+@login_required
 def fetch_and_store_meta_campaigns():
     access_token = session.get("meta_token")
     account_id = session.get("meta_account_id")
@@ -960,6 +1327,7 @@ def fetch_and_store_meta_campaigns():
 # Generic reporting endpoints
 # -----------------------------------------------------------------------------
 @app.route("/filter-performance", methods=["GET"])
+@login_required
 def filter_performance():
     time_range = request.args.get("range")
     value = request.args.get("value")
@@ -1014,6 +1382,7 @@ def filter_performance():
     )
 
 @app.route("/insights", methods=["GET"])
+@login_required
 def get_insights():
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
@@ -1114,6 +1483,7 @@ def get_insights():
 
 
 @app.route("/aggregated-performance", methods=["GET"])
+@login_required
 def get_aggregated_performance():
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
@@ -1161,6 +1531,7 @@ def get_aggregated_performance():
 
 
 @app.route("/get-campaigns", methods=["GET"])
+@login_required
 def get_campaigns():
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
