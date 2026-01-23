@@ -4,7 +4,8 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import Insights from "../../components/Insights/Insights";
 import './ByChannels.css';
-import { useDate } from '../../context/DateContext'; // Importiere den useDate Hook
+import { useDate } from '../../context/DateContext';
+import * as api from '../../utils/api';
 
 function ByChannels() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ function ByChannels() {
 
       console.log(`Fetching data for range: ${start} to ${end}`); // Debugging Log
 
-      fetch(`http://127.0.0.1:5000/aggregated-performance?start_date=${start}&end_date=${end}`)
+      api.get(`/aggregated-performance?start_date=${start}&end_date=${end}`)
         .then(response => {
           console.log(`Response status: ${response.status}`);
           if (!response.ok) {

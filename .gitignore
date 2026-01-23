@@ -15,7 +15,10 @@ __pycache__/
 *.pyc
 
 # Node
-node_modules/
+/node_modules
 
 replacements.txt
+
+cursor/
+CLAUDE.md
 
